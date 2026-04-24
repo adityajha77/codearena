@@ -18,6 +18,7 @@ interface UserState {
   githubHandle: string | null;
   leetcodeHandle: string | null;
   codeforcesHandle: string | null;
+  twitterHandle: string | null;
   
   activeChallenges: SolChallenge[];
   totalStake: number;
@@ -28,6 +29,7 @@ interface UserState {
   setGithubHandle: (handle: string | null) => void;
   setLeetcodeHandle: (handle: string | null) => void;
   setCodeforcesHandle: (handle: string | null) => void;
+  setTwitterHandle: (handle: string | null) => void;
   
   addChallenge: (challenge: SolChallenge) => void;
   markChallengeSolvedToday: (challengeId: string, dateStr: string) => void;
@@ -41,6 +43,7 @@ export const useUserStore = create<UserState>()(
       githubHandle: null,
       leetcodeHandle: null,
       codeforcesHandle: null,
+      twitterHandle: null,
       activeChallenges: [],
       totalStake: 0,
       streakDays: 0,
@@ -50,6 +53,7 @@ export const useUserStore = create<UserState>()(
         githubHandle: null,
         leetcodeHandle: null,
         codeforcesHandle: null,
+        twitterHandle: null,
         activeChallenges: [],
         totalStake: 0,
         streakDays: 0,
@@ -64,6 +68,7 @@ export const useUserStore = create<UserState>()(
              githubHandle: null,
              leetcodeHandle: null,
              codeforcesHandle: null,
+             twitterHandle: null,
              dailyActivity: {}
            };
         }
@@ -72,6 +77,7 @@ export const useUserStore = create<UserState>()(
       setGithubHandle: (handle) => set({ githubHandle: handle }),
       setLeetcodeHandle: (handle) => set({ leetcodeHandle: handle }),
       setCodeforcesHandle: (handle) => set({ codeforcesHandle: handle }),
+      setTwitterHandle: (handle) => set({ twitterHandle: handle }),
       
       addChallenge: (challenge) => set((state) => ({ 
         activeChallenges: [...state.activeChallenges, { ...challenge, userWallet: state.walletAddress || "unknown" }],
