@@ -84,7 +84,7 @@ const Leaderboard = () => {
     // Subscribe to real-time updates
     const subscription = supabase
       .channel('leaderboard_changes')
-      .on('postgres_changes', { event: '*', table: 'challenge_participants' }, () => {
+      .on('postgres_changes' as any, { event: '*', table: 'challenge_participants' }, () => {
         fetchData();
       })
       .subscribe();
