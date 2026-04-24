@@ -1,0 +1,93 @@
+{
+  "version": "0.1.0",
+  "name": "code_arena",
+  "instructions": [
+    {
+      "name": "initializePool",
+      "accounts": [
+        { "name": "challengePool", "isMut": true, "isSigner": false },
+        { "name": "creator", "isMut": true, "isSigner": true },
+        { "name": "oracle", "isMut": false, "isSigner": false },
+        { "name": "beneficiary", "isMut": true, "isSigner": false },
+        { "name": "systemProgram", "isMut": false, "isSigner": false }
+      ],
+      "args": [
+        { "name": "challengeId", "type": "string" },
+        { "name": "baseStakeAmount", "type": "u64" },
+        { "name": "durationDays", "type": "u16" },
+        { "name": "isSolo", "type": "bool" }
+      ]
+    },
+    {
+      "name": "joinChallenge",
+      "accounts": [
+        { "name": "challengePool", "isMut": true, "isSigner": false },
+        { "name": "participantRecord", "isMut": true, "isSigner": false },
+        { "name": "user", "isMut": true, "isSigner": true },
+        { "name": "systemProgram", "isMut": false, "isSigner": false }
+      ],
+      "args": []
+    },
+    {
+      "name": "applyPenalty",
+      "accounts": [
+        { "name": "challengePool", "isMut": true, "isSigner": false },
+        { "name": "participantRecord", "isMut": true, "isSigner": false },
+        { "name": "oracle", "isMut": true, "isSigner": true },
+        { "name": "beneficiary", "isMut": true, "isSigner": false }
+      ],
+      "args": []
+    },
+    {
+      "name": "claimPayout",
+      "accounts": [
+        { "name": "challengePool", "isMut": true, "isSigner": false },
+        { "name": "participantRecord", "isMut": true, "isSigner": false },
+        { "name": "user", "isMut": true, "isSigner": true }
+      ],
+      "args": []
+    }
+  ],
+  "accounts": [
+    {
+      "name": "challengePool",
+      "discriminator": [ 141, 155, 150, 172, 47, 129, 41, 87 ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          { "name": "authority", "type": "publicKey" },
+          { "name": "oracle", "type": "publicKey" },
+          { "name": "beneficiary", "type": "publicKey" },
+          { "name": "challengeId", "type": "string" },
+          { "name": "baseStakeAmount", "type": "u64" },
+          { "name": "durationDays", "type": "u16" },
+          { "name": "isSolo", "type": "bool" },
+          { "name": "totalSurvivors", "type": "u64" },
+          { "name": "totalParticipants", "type": "u64" },
+          { "name": "poolBump", "type": "u8" }
+        ]
+      }
+    },
+    {
+      "name": "participantRecord",
+      "discriminator": [ 106, 52, 124, 24, 80, 173, 194, 4 ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          { "name": "user", "type": "publicKey" },
+          { "name": "challengePool", "type": "publicKey" },
+          { "name": "strikeCount", "type": "u8" },
+          { "name": "hasClaimedPayout", "type": "bool" },
+          { "name": "bump", "type": "u8" }
+        ]
+      }
+    }
+  ],
+  "errors": [
+    { "code": 6000, "name": "UnauthorizedOracle", "msg": "Only the designated backend oracle can apply penalties." },
+    { "code": 6001, "name": "AlreadyEliminated", "msg": "Participant has already been eliminated from the challenge." },
+    { "code": 6002, "name": "Eliminated", "msg": "You are eliminated and cannot claim a payout." },
+    { "code": 6003, "name": "AlreadyClaimed", "msg": "You have already claimed your payout." },
+    { "code": 6004, "name": "NoSurvivors", "msg": "There are no survivors left in the pool to divide the reward." }
+  ]
+}

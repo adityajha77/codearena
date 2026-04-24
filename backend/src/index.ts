@@ -2,7 +2,10 @@ import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import axios from 'axios';
-import { createClient } from '@supabase/supabase-js';
+import { supabase } from './supabase';
+import { sendMessage } from './telegram';
+import { startScheduler } from './scheduler';
+import './telegram'; // Initialize telegram bot
 
 dotenv.config();
 
@@ -20,14 +23,6 @@ if (!process.env.GITHUB_CLIENT_ID || !process.env.GITHUB_CLIENT_SECRET) {
   console.warn("⚠️  Missing GITHUB_CLIENT_ID or GITHUB_CLIENT_SECRET! GitHub OAuth will fail.");
 }
 
-// Initialize Supabase client
-let supabase: any;
-if (process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY) {
-  supabase = createClient(
-    process.env.SUPABASE_URL,
-    process.env.SUPABASE_SERVICE_ROLE_KEY
-  );
-}
 
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
 
@@ -114,11 +109,35 @@ app.get('/api/auth/github/callback', async (req, res) => {
 });
 
 
-// Health Check
+// --------------------------------------------------------------------------
+// 2. Telegram Testing
+// --------------------------------------------------------------------------
+
+app.get('/api/test-telegram', async (req, res) => {
+  const { chatId } = req.query;
+  if (!chatId) return res.status(400).send("Missing chatId query param");
+
+  const sent = await sendMessage(chatId as string, "🔔 *Test Notification* from CodeArena! Your bot is working perfectly. 🚀");
+  
+  if (sent) {
+    res.send("Message sent successfully!");
+  } else {
+    res.status(500).send("Failed to send message. Check backend logs.");
+  }
+});
+
+app.get('/api/debug/trigger-reminders', async (req, res) => {
+  const { runReminderCheck } = require('./scheduler');
+  await runReminderCheck(true); // 'true' forces the check to trigger a level 3 reminder
+  res.send("Forced reminder check triggered! Check your Telegram.");
+});
+
 app.get('/health', (req, res) => {
   res.send('CodeArena Backend is running!');
 });
 
 app.listen(PORT, () => {
   console.log(`🚀 Backend server listening on port ${PORT}`);
+  startScheduler();
 });
+

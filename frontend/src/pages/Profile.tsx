@@ -241,6 +241,30 @@ const Profile = () => {
                     </div>
                   ))}
                 </div>
+
+                <div className="mt-8 pt-6 border-t border-border/20">
+                  <h3 className="text-sm font-bold font-display mb-2 uppercase tracking-tight text-muted-foreground">Notification Settings</h3>
+                  <div className="flex items-center justify-between p-3 bg-primary/5 rounded-xl border border-primary/20">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-full bg-[#0088cc]/20 flex items-center justify-center text-[#0088cc]">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg>
+                      </div>
+                      <div>
+                        <p className="text-sm font-bold">Telegram Reminders</p>
+                        <p className="text-xs text-muted-foreground">Get notified 3h, 2h, and 1h before deadlines.</p>
+                      </div>
+                    </div>
+                    <button 
+                      onClick={() => {
+                        const BOT_USERNAME = "Code_arenaBot"; // Real bot username
+                        window.open(`https://t.me/${BOT_USERNAME}?start=${walletAddress}`, '_blank');
+                      }}
+                      className="bg-[#0088cc] hover:bg-[#0088cc]/90 text-white text-xs px-3 py-2 rounded-lg font-bold transition-all"
+                    >
+                      Connect Bot
+                    </button>
+                  </div>
+                </div>
               </div>
             </ScrollReveal>
 
