@@ -12,6 +12,7 @@ const navLinks = [
   { to: "/leaderboard", label: "Leaderboard" },
   { to: "/profile", label: "Profile" },
   { to: "/history", label: "History" },
+  { to: "/contact", label: "Contact" },
   { to: "/about", label: "About" },
 ];
 

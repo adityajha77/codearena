@@ -2,10 +2,36 @@ import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import Particles from "@/components/Particles";
 import ScrollReveal from "@/components/ScrollReveal";
-import { useState } from "react";
+import { useState, useRef } from "react";
+import emailjs from "@emailjs/browser";
+import { toast } from "sonner";
 
 const Contact = () => {
   const [type, setType] = useState("suggestion");
+  const [isSending, setIsSending] = useState(false);
+  const formRef = useRef<HTMLFormElement>(null);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!formRef.current) return;
+
+    setIsSending(true);
+    try {
+      await emailjs.sendForm(
+        import.meta.env.VITE_EMAILJS_SERVICE_ID,
+        import.meta.env.VITE_EMAILJS_TEMPLATE_ID,
+        formRef.current,
+        import.meta.env.VITE_EMAILJS_PUBLIC_KEY
+      );
+      toast.success("Message sent successfully!");
+      formRef.current.reset();
+    } catch (error) {
+      console.error("EmailJS Error:", error);
+      toast.error("Failed to send message. Please try again.");
+    } finally {
+      setIsSending(false);
+    }
+  };
 
   return (
     <div className="min-h-screen relative">
@@ -23,22 +49,27 @@ const Contact = () => {
           </ScrollReveal>
 
           <ScrollReveal delay={0.1}>
-            <div className="glass-card rounded-2xl p-6 space-y-4">
-              <div className="flex gap-2 flex-wrap">
+            <form ref={formRef} onSubmit={handleSubmit} className="glass-card rounded-2xl p-6 space-y-4">
+              <div className="flex gap-2 flex-wrap mb-2">
                 {["suggestion", "bug", "feature", "partnership"].map(t => (
-                  <button key={t} onClick={() => setType(t)}
+                  <button type="button" key={t} onClick={() => setType(t)}
                     className={`px-3 py-1.5 rounded-full text-sm capitalize transition-colors ${
                       type === t ? "bg-primary text-primary-foreground" : "bg-muted/50 text-muted-foreground"
                     }`}>{t}</button>
                 ))}
               </div>
-              <input type="text" placeholder="Your name" className="w-full px-4 py-2.5 rounded-xl bg-muted/30 border border-border/50 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary" />
-              <input type="email" placeholder="Email address" className="w-full px-4 py-2.5 rounded-xl bg-muted/30 border border-border/50 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary" />
-              <textarea rows={4} placeholder="Your message..." className="w-full px-4 py-2.5 rounded-xl bg-muted/30 border border-border/50 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary resize-none" />
-              <button className="w-full py-2.5 rounded-xl bg-primary text-primary-foreground font-semibold text-sm hover:opacity-90 transition-opacity">
-                Send Message
+              <input type="hidden" name="contact_type" value={type} />
+              <input name="user_name" type="text" required placeholder="Your name" className="w-full px-4 py-2.5 rounded-xl bg-muted/30 border border-border/50 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary" />
+              <input name="user_email" type="email" required placeholder="Email address" className="w-full px-4 py-2.5 rounded-xl bg-muted/30 border border-border/50 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary" />
+              <textarea name="message" required rows={4} placeholder="Your message..." className="w-full px-4 py-2.5 rounded-xl bg-muted/30 border border-border/50 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary resize-none" />
+              <button 
+                type="submit" 
+                disabled={isSending}
+                className="w-full py-2.5 rounded-xl bg-primary text-primary-foreground font-semibold text-sm hover:opacity-90 transition-opacity disabled:opacity-50"
+              >
+                {isSending ? "Sending..." : "Send Message"}
               </button>
-            </div>
+            </form>
           </ScrollReveal>
         </div>
       </section>
