@@ -31,6 +31,7 @@ interface UserState {
   setCodeforcesHandle: (handle: string | null) => void;
   setTwitterHandle: (handle: string | null) => void;
   
+  setActiveChallenges: (challenges: SolChallenge[]) => void;
   addChallenge: (challenge: SolChallenge) => void;
   markChallengeSolvedToday: (challengeId: string, dateStr: string) => void;
   clearUserData: () => void;
@@ -79,6 +80,8 @@ export const useUserStore = create<UserState>()(
       setCodeforcesHandle: (handle) => set({ codeforcesHandle: handle }),
       setTwitterHandle: (handle) => set({ twitterHandle: handle }),
       
+      setActiveChallenges: (challenges) => set({ activeChallenges: challenges }),
+      
       addChallenge: (challenge) => set((state) => ({ 
         activeChallenges: [...state.activeChallenges, { ...challenge, userWallet: state.walletAddress || "unknown" }],
         totalStake: state.totalStake + challenge.stakeAmount
@@ -100,6 +103,13 @@ export const useUserStore = create<UserState>()(
     }),
     {
       name: 'user-storage',
+      partialize: (state) => ({ 
+        walletAddress: state.walletAddress,
+        githubHandle: state.githubHandle,
+        leetcodeHandle: state.leetcodeHandle,
+        codeforcesHandle: state.codeforcesHandle,
+        twitterHandle: state.twitterHandle
+      }),
     }
   )
 );

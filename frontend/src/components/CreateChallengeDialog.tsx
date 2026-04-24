@@ -143,24 +143,19 @@ export default function CreateChallengeDialog({ isOpen, onClose, onSuccess }: Pr
       });
 
       // 4. Send Notifications based on mode
-      if (formData.mode === 'Community') {
-        await supabase.from('notifications').insert([{
-           recipient_wallet: 'global',
-           message: `A new Community Challenge "${formData.title}" is available!`,
-           type: 'live',
-           challenge_id: challengeData.id
-        }]);
-      } else if (formData.mode === 'Friend') {
-         const notifs = friends.map(f => ({
-           recipient_wallet: f,
-           message: `You were invited by ${walletAddress.substring(0,4)}... to join "${formData.title}"!`,
-           type: 'info',
-           challenge_id: challengeData.id
+      // 4. Send Notifications ONLY for Friend mode
+      if (formData.mode === 'Friend' && friends.length > 0) {
+         const notifications = friends.map((friendWallet: string) => ({
+           user_wallet: friendWallet,
+           type: "friend_invite",
+           message: `You've been invited by ${walletAddress.substring(0,4)}... to join "${formData.title}"!`,
+           challenge_id: challengeData.id,
          }));
-         await supabase.from('notifications').insert(notifs);
+         
+         await supabase.from('notifications').insert(notifications);
       }
 
-      toast.success("Challenge created and staked successfully!");
+      toast.success("Challenge created successfully!");
       onSuccess();
       onClose();
     } catch (error: any) {

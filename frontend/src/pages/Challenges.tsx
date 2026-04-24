@@ -23,7 +23,7 @@ const Challenges = () => {
   const [isProcessingTx, setIsProcessingTx] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   
-  const { addChallenge, walletAddress, activeChallenges, githubHandle, leetcodeHandle, codeforcesHandle } = useUserStore();
+  const { addChallenge, setActiveChallenges, walletAddress, activeChallenges, githubHandle, leetcodeHandle, codeforcesHandle } = useUserStore();
   const { connection } = useConnection();
   const { publicKey, sendTransaction } = useWallet();
 
@@ -42,12 +42,44 @@ const Challenges = () => {
     } else {
       setChallenges(challengesData || []);
     }
+    
+    // Fetch active challenges for this user
+    if (walletAddress) {
+      const { data: participantData } = await supabase
+        .from('challenge_participants')
+        .select(`
+          last_solved_date,
+          challenges!fk_challenge (
+            id, title, duration, stake, platform
+          )
+        `)
+        .ilike('wallet_address', walletAddress);
+        
+      if (participantData) {
+        const myChallenges = participantData.map(p => {
+          const c = p.challenges as any;
+          return {
+            id: c.id,
+            title: c.title,
+            days: parseInt(c.duration),
+            stakeAmount: parseFloat(c.stake),
+            isActive: true,
+            startDate: new Date(), 
+            platform: c.platform,
+            lastSolvedDate: p.last_solved_date || undefined,
+            userWallet: walletAddress
+          };
+        });
+        setActiveChallenges(myChallenges);
+      }
+    }
+
     setIsLoading(false);
   };
 
   useEffect(() => {
     fetchChallenges();
-  }, []);
+  }, [walletAddress]);
 
   const filtered = challenges.filter(c => {
     // 1. Search filter
@@ -148,7 +180,20 @@ const Challenges = () => {
 
       if (error) throw error;
       
-      // Save transaction to history
+      // 1. Join the challenge in the database
+      const { error: joinError } = await supabase
+        .from('challenge_participants')
+        .insert([{
+          challenge_id: c.id,
+          wallet_address: walletAddress,
+          current_streak: 0,
+          total_days_solved: 0,
+          joined_at: new Date().toISOString()
+        }]);
+
+      if (joinError) throw joinError;
+
+      // 2. Save transaction to history
       const { error: txError } = await supabase
         .from('transactions')
         .insert([{

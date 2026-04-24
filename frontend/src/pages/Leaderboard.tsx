@@ -33,7 +33,7 @@ const Leaderboard = () => {
         .eq('mode', 'Community');
       setAllChallenges(challengesData || []);
 
-      // 2. Fetch participations
+      // 2. Fetch participations - Only for Community challenges
       let query = supabase
         .from('challenge_participants')
         .select(`
@@ -46,14 +46,16 @@ const Leaderboard = () => {
             display_name,
             github
           ),
-          challenges!fk_challenge (
+          challenges!fk_challenge!inner (
             id,
             title,
             platform,
             duration,
-            stake
+            stake,
+            mode
           )
-        `);
+        `)
+        .eq('challenges.mode', 'Community');
 
       // Filter by specific challenge if selected
       if (selectedChallenge !== "all") {

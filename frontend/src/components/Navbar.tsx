@@ -1,9 +1,11 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import ThemeSwitcher from "./ThemeSwitcher";
 import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
 import mascotImg from "@/assets/mascot.png";
+import { useUserStore } from "@/store/userStore";
+import { supabase } from "@/lib/supabase";
 
 const navLinks = [
   { to: "/", label: "Home" },
@@ -19,6 +21,43 @@ const navLinks = [
 const Navbar = () => {
   const location = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const { walletAddress } = useUserStore();
+  const [unreadCount, setUnreadCount] = useState(0);
+
+  useEffect(() => {
+    if (!walletAddress) return;
+
+    const fetchNotifications = async () => {
+      const { count } = await supabase
+        .from('notifications')
+        .select('*', { count: 'exact', head: true })
+        .eq('user_wallet', walletAddress)
+        .eq('is_read', false);
+      
+      setUnreadCount(count || 0);
+    };
+
+    fetchNotifications();
+
+    // Subscribe to new notifications
+    const channel = supabase
+      .channel('schema-db-changes')
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'notifications',
+          filter: `user_wallet=eq.${walletAddress}`
+        },
+        () => fetchNotifications()
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [walletAddress]);
 
   return (
     <nav className="fixed top-0 left-0 right-0 z-50 glass-card border-b border-border/50">
@@ -54,7 +93,11 @@ const Navbar = () => {
             className="p-2 rounded-lg bg-muted/50 hover:bg-muted transition-colors text-sm relative"
           >
             🔔
-            <span className="absolute -top-1 -right-1 w-4 h-4 bg-destructive rounded-full text-[10px] flex items-center justify-center text-destructive-foreground">3</span>
+            {unreadCount > 0 && (
+              <span className="absolute -top-1 -right-1 w-4 h-4 bg-destructive rounded-full text-[10px] flex items-center justify-center text-destructive-foreground animate-bounce">
+                {unreadCount}
+              </span>
+            )}
           </Link>
           <div className="wallet-adapter-button-override">
             <WalletMultiButton />

@@ -8,9 +8,12 @@ export interface PlatformStats {
 
 export type ActivityMap = Record<string, number>;
 
-// Helper to convert dates to YYYY-MM-DD
+// Helper to convert dates to YYYY-MM-DD in local timezone
 export const toDateString = (date: Date) => {
-  return date.toISOString().split('T')[0];
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
 };
 
 export const verifyGitHub = async (handle: string): Promise<PlatformStats> => {
@@ -91,7 +94,7 @@ export const getCodeforcesActivity = async (handle: string): Promise<ActivityMap
         const map: ActivityMap = {};
         if (data.status === "OK" && data.result) {
             data.result.forEach((submission: any) => {
-                if (submission.creationTimeSeconds) {
+                if (submission.creationTimeSeconds && submission.verdict === "OK") {
                     const date = new Date(submission.creationTimeSeconds * 1000);
                     map[toDateString(date)] = (map[toDateString(date)] || 0) + 1;
                 }
@@ -134,9 +137,11 @@ export const checkActivityToday = async (platform: string, handle: string): Prom
           if (!res.ok) return false;
           
           const events = await res.json();
-          const hasActivityToday = events.some((event: any) => 
-            event.created_at && event.created_at.startsWith(today)
-          );
+          const hasActivityToday = events.some((event: any) => {
+            if (!event.created_at) return false;
+            const eventDate = new Date(event.created_at);
+            return toDateString(eventDate) === today;
+          });
           
           return hasActivityToday;
       }

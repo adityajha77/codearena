@@ -31,7 +31,6 @@ const badges = ["🔥 10-Day Streak", "💎 100 Problems", "🏆 Challenge Winne
 const Profile = () => {
   const { 
     walletAddress, githubHandle, leetcodeHandle, codeforcesHandle, twitterHandle,
-    activeChallenges, totalStake,
     setGithubHandle, setLeetcodeHandle, setCodeforcesHandle, setTwitterHandle,
     dailyActivity 
   } = useUserStore();
@@ -43,12 +42,17 @@ const Profile = () => {
   const [isConnecting, setIsConnecting] = useState<string | null>(null);
   const [totalSolved, setTotalSolved] = useState(0);
   const [maxStreak, setMaxStreak] = useState(0);
+  const [totalWins, setTotalWins] = useState(0);
+  const [liveTotalStake, setLiveTotalStake] = useState(0);
+  const [joinedCount, setJoinedCount] = useState(0);
 
-  // Sync handles from database on load
+  // Consolidated data fetcher
   useEffect(() => {
-    if (walletAddress) {
-      supabase.from('user_profiles').select('*').eq('wallet_address', walletAddress).single()
-      .then(({data, error}) => {
+    if (!walletAddress) return;
+
+    // 1. Fetch User Profile
+    supabase.from('user_profiles').select('*').eq('wallet_address', walletAddress).single()
+      .then(({data}) => {
          if (data) {
             setDisplayName(data.display_name || "");
             setIsNameLocked(data.name_updated || false);
@@ -58,22 +62,66 @@ const Profile = () => {
             if (data.twitter) setTwitterHandle(data.twitter);
          }
       });
-      
-      // Fetch stats from challenge_participants
-      supabase.from('challenge_participants')
-        .select('current_streak, total_days_solved')
-        .eq('wallet_address', walletAddress)
-        .then(({ data }) => {
-          if (data && data.length > 0) {
-            const streak = Math.max(...data.map(p => p.current_streak || 0));
-            const solved = data.reduce((acc, p) => acc + (p.total_days_solved || 0), 0);
-            setMaxStreak(streak);
-            setTotalSolved(solved);
-          }
-        });
-    }
+    
+    // 2. Fetch & Calculate Stats
+    const fetchStats = async () => {
+      const { data, error } = await supabase.from('challenge_participants')
+        .select(`
+          current_streak, 
+          total_days_solved,
+          challenges!fk_challenge (duration, stake)
+        `)
+        .ilike('wallet_address', walletAddress);
 
-    // Check for OAuth callbacks
+      if (error) {
+        console.error("Stats Fetch Error:", error);
+        return;
+      }
+      
+      if (data && data.length > 0) {
+        const streak = Math.max(...data.map(p => p.current_streak || 0));
+        const solved = data.reduce((acc, p) => acc + (p.total_days_solved || 0), 0);
+        
+        // Calculate total stake based on the challenges they joined
+        const stake = data.reduce((acc, p) => {
+          const challengeStake = (p.challenges as any)?.stake || 0;
+          return acc + Number(challengeStake);
+        }, 0);
+        
+        const wins = data.filter(p => {
+          const duration = (p.challenges as any)?.duration || 0;
+          return p.total_days_solved >= duration && duration > 0;
+        }).length;
+
+        setMaxStreak(streak);
+        setTotalSolved(solved);
+        setTotalWins(wins);
+        setLiveTotalStake(stake);
+        setJoinedCount(data.length);
+      } else {
+        setJoinedCount(0);
+        setLiveTotalStake(0);
+        setTotalSolved(0);
+        setMaxStreak(0);
+        setTotalWins(0);
+      }
+    };
+
+    fetchStats();
+
+    // 3. Real-time Subscription
+    const channel = supabase
+      .channel(`profile_stats_${walletAddress}`)
+      .on('postgres_changes' as any, { 
+        event: '*', 
+        table: 'challenge_participants', 
+        filter: `wallet_address=eq.${walletAddress}` 
+      }, () => {
+        fetchStats();
+      })
+      .subscribe();
+
+    // 4. Check for OAuth callbacks
     const params = new URLSearchParams(window.location.search);
     if (params.get('success') === 'github') {
         toast.success("GitHub account successfully linked!");
@@ -81,14 +129,16 @@ const Profile = () => {
     } else if (params.get('error') === 'github_claimed') {
         toast.error("This GitHub account is already linked to another wallet!");
         window.history.replaceState({}, document.title, window.location.pathname);
-    } else if (params.get('error') === 'github_auth_failed') {
-        toast.error("GitHub authorization failed.");
-        window.history.replaceState({}, document.title, window.location.pathname);
     }
-  }, [walletAddress]);
 
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [walletAddress, setGithubHandle, setLeetcodeHandle, setCodeforcesHandle, setTwitterHandle]);
+
+  // Handle Platform Loading
   useEffect(() => {
-    const loadStats = async () => {
+    const loadPlatformStats = async () => {
       const promises = [
         githubHandle ? verifyGitHub(githubHandle) : Promise.resolve({ ...defaultPlatforms[0] }),
         leetcodeHandle ? verifyLeetCode(leetcodeHandle) : Promise.resolve({ ...defaultPlatforms[1] }),
@@ -99,55 +149,46 @@ const Profile = () => {
       const results = await Promise.all(promises);
       setPlatformData(results);
     };
-    loadStats();
+    loadPlatformStats();
   }, [githubHandle, leetcodeHandle, codeforcesHandle, twitterHandle]);
 
   const handleConnect = async (platformName: string) => {
     if (!walletAddress) {
-        toast.error("Please connect your wallet first!");
-        return;
+      toast.error("Please connect your wallet first");
+      return;
     }
 
     if (platformName === 'GitHub') {
-        window.location.href = `http://localhost:3000/api/auth/github?wallet=${walletAddress}`;
-        return;
+      window.location.href = `${import.meta.env.VITE_BACKEND_URL}/api/auth/github?wallet=${walletAddress}`;
+      return;
     }
 
     const handle = prompt(`Enter your ${platformName} username:`);
     if (!handle) return;
+
     setIsConnecting(platformName);
-    
     let result;
-    switch (platformName) {
-      case 'LeetCode': result = await verifyLeetCode(handle); break;
-      case 'Codeforces': result = await verifyCodeforces(handle); break;
-      case 'Twitter': result = { valid: true }; break; // Manual verification for twitter
-    }
-    
+    if (platformName === 'LeetCode') result = await verifyLeetCode(handle);
+    else if (platformName === 'Codeforces') result = await verifyCodeforces(handle);
+    else if (platformName === 'Twitter') result = { connected: true, valid: true };
+
     setIsConnecting(null);
-    
-    if (result && result.valid) {
+
+    if (result?.valid) {
       const dbColMap: Record<string, string> = {
         'LeetCode': 'leetcode',
         'Codeforces': 'codeforces',
         'Twitter': 'twitter'
       };
-      
       const colName = dbColMap[platformName];
-      
-      // Save it to database to lock uniqueness
-      const { error: upsertError } = await supabase.from('user_profiles').upsert({
-         wallet_address: walletAddress,
+
+      const { error } = await supabase.from('user_profiles').update({
          [colName]: handle
-      }, { onConflict: 'wallet_address' });
-      
-      if (upsertError) {
-         if (upsertError.code === '23505') {
-            toast.error(`This ${platformName} handle is already claimed by another wallet!`);
-         } else {
-            toast.error("Database error connecting handle.");
-         }
-         return;
+      }).eq('wallet_address', walletAddress);
+
+      if (error) {
+          toast.error("Failed to save handle to profile.");
+          return;
       }
 
       switch (platformName) {
@@ -210,7 +251,7 @@ const Profile = () => {
   const shareToTwitter = () => {
     const solvedCount = totalSolved || 0;
     const streak = maxStreak || 0;
-    const text = `Just hit a major milestone on CodeArena! 🔥\n\n🎯 Problems Solved: ${solvedCount}\n⚡ Current Streak: ${streak} Days\n\nCome join me and start your coding journey! 🚀\n\nLink: codearena.xyz\n\n#codearena #web3 #coding #100DaysOfCode @codearena`;
+    const text = `Just hit a major milestone on CodeArena! 🔥\n\n🎯 Problems Solved: ${solvedCount}\n⚡ Best Streak: ${streak} Days\n\nCome join me and start your coding journey! 🚀\n\n#codearena #web3 #coding #100DaysOfCode @codearena`;
     const url = `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}`;
     window.open(url, '_blank');
   };
@@ -224,7 +265,6 @@ const Profile = () => {
       <Navbar />
       <section className="pt-28 pb-20">
         <div className="container mx-auto px-4">
-          {/* Profile Header */}
           <ScrollReveal>
             <div className="glass-card rounded-2xl p-6 md:p-8 flex flex-col md:flex-row items-center gap-6 mb-8">
               <motion.img src={mascotImg} alt="Avatar" className="w-24 h-24 rounded-2xl" whileHover={{ rotate: 5 }} />
@@ -276,18 +316,16 @@ const Profile = () => {
             </div>
           </ScrollReveal>
 
-          {/* Stats */}
           <ScrollReveal>
             <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-8">
               <AnimatedCounter value={totalSolved} label="Problems Solved" />
-              <AnimatedCounter value={maxStreak} label="Active Days" />
-              <AnimatedCounter value={activeChallenges.length} label="Challenges Joined" />
-              <AnimatedCounter value={8} label="Challenges Won" />
-              <AnimatedCounter value={totalStake} label="SOL Staked" duration={1.5} />
+              <AnimatedCounter value={maxStreak} label="Best Streak" />
+              <AnimatedCounter value={joinedCount} label="Challenges Joined" />
+              <AnimatedCounter value={totalWins} label="Challenges Won" />
+              <AnimatedCounter value={liveTotalStake} label="SOL Staked" duration={1.5} />
             </div>
           </ScrollReveal>
 
-          {/* Heatmap */}
           <ScrollReveal>
             <div className="glass-card rounded-2xl p-6 mb-8 overflow-x-auto">
               <h2 className="text-lg font-bold font-display mb-4">Streak Calendar</h2>
@@ -296,7 +334,6 @@ const Profile = () => {
           </ScrollReveal>
 
           <div className="grid md:grid-cols-2 gap-6">
-            {/* Connected Platforms */}
             <ScrollReveal>
               <div className="glass-card rounded-2xl p-6">
                 <h2 className="text-lg font-bold font-display mb-4">Connected Platforms</h2>
@@ -347,7 +384,7 @@ const Profile = () => {
                     </div>
                     <button 
                       onClick={() => {
-                        const BOT_USERNAME = "Code_arenaBot"; // Real bot username
+                        const BOT_USERNAME = "Code_arenaBot";
                         window.open(`https://t.me/${BOT_USERNAME}?start=${walletAddress}`, '_blank');
                       }}
                       className="bg-[#0088cc] hover:bg-[#0088cc]/90 text-white text-xs px-3 py-2 rounded-lg font-bold transition-all"
@@ -359,7 +396,6 @@ const Profile = () => {
               </div>
             </ScrollReveal>
 
-            {/* Badges */}
             <ScrollReveal delay={0.1}>
               <div className="glass-card rounded-2xl p-6">
                 <h2 className="text-lg font-bold font-display mb-4">Badges & Achievements</h2>
