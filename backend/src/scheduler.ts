@@ -7,11 +7,14 @@ dotenv.config();
 
 const bot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN!);
 
-// Run every 15 minutes for high accuracy
-cron.schedule('*/15 * * * *', () => {
-  console.log('Running scheduled reminder check...');
-  runReminderCheck();
-});
+export const startScheduler = () => {
+  console.log('⏰ Reminder scheduler started! (Checking every 15 mins)');
+  // Run every 15 minutes for high accuracy
+  cron.schedule('*/15 * * * *', () => {
+    console.log('Running scheduled reminder check...');
+    runReminderCheck();
+  });
+};
 
 export const runReminderCheck = async (force = false) => {
   const now = new Date();
