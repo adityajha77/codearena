@@ -23,15 +23,16 @@ const defaultPlatforms: PlatformStats[] = [
   { platform: "GitHub", handle: "", connected: false, valid: false, stats: "—" },
   { platform: "LeetCode", handle: "", connected: false, valid: false, stats: "—" },
   { platform: "Codeforces", handle: "", connected: false, valid: false, stats: "—" },
+  { platform: "Twitter", handle: "", connected: false, valid: false, stats: "Connect to share" },
 ];
 
 const badges = ["🔥 10-Day Streak", "💎 100 Problems", "🏆 Challenge Winner", "⭐ First Challenge", "🎯 Perfect Week", "🌟 Top 10"];
 
 const Profile = () => {
   const { 
-    walletAddress, githubHandle, leetcodeHandle, codeforcesHandle, 
+    walletAddress, githubHandle, leetcodeHandle, codeforcesHandle, twitterHandle,
     activeChallenges, totalStake,
-    setGithubHandle, setLeetcodeHandle, setCodeforcesHandle, 
+    setGithubHandle, setLeetcodeHandle, setCodeforcesHandle, setTwitterHandle,
     dailyActivity 
   } = useUserStore();
   
@@ -40,6 +41,8 @@ const Profile = () => {
   const [isNameLocked, setIsNameLocked] = useState(false);
   const [platformData, setPlatformData] = useState<PlatformStats[]>(defaultPlatforms);
   const [isConnecting, setIsConnecting] = useState<string | null>(null);
+  const [totalSolved, setTotalSolved] = useState(0);
+  const [maxStreak, setMaxStreak] = useState(0);
 
   // Sync handles from database on load
   useEffect(() => {
@@ -52,8 +55,22 @@ const Profile = () => {
             if (data.github) setGithubHandle(data.github);
             if (data.leetcode) setLeetcodeHandle(data.leetcode);
             if (data.codeforces) setCodeforcesHandle(data.codeforces);
+            if (data.twitter) setTwitterHandle(data.twitter);
          }
       });
+      
+      // Fetch stats from challenge_participants
+      supabase.from('challenge_participants')
+        .select('current_streak, total_days_solved')
+        .eq('wallet_address', walletAddress)
+        .then(({ data }) => {
+          if (data && data.length > 0) {
+            const streak = Math.max(...data.map(p => p.current_streak || 0));
+            const solved = data.reduce((acc, p) => acc + (p.total_days_solved || 0), 0);
+            setMaxStreak(streak);
+            setTotalSolved(solved);
+          }
+        });
     }
 
     // Check for OAuth callbacks
@@ -75,14 +92,15 @@ const Profile = () => {
       const promises = [
         githubHandle ? verifyGitHub(githubHandle) : Promise.resolve({ ...defaultPlatforms[0] }),
         leetcodeHandle ? verifyLeetCode(leetcodeHandle) : Promise.resolve({ ...defaultPlatforms[1] }),
-        codeforcesHandle ? verifyCodeforces(codeforcesHandle) : Promise.resolve({ ...defaultPlatforms[2] })
+        codeforcesHandle ? verifyCodeforces(codeforcesHandle) : Promise.resolve({ ...defaultPlatforms[2] }),
+        twitterHandle ? Promise.resolve({ platform: "Twitter", handle: twitterHandle, connected: true, valid: true, stats: "Ready to share" }) : Promise.resolve({ ...defaultPlatforms[3] })
       ];
       
       const results = await Promise.all(promises);
       setPlatformData(results);
     };
     loadStats();
-  }, [githubHandle, leetcodeHandle, codeforcesHandle]);
+  }, [githubHandle, leetcodeHandle, codeforcesHandle, twitterHandle]);
 
   const handleConnect = async (platformName: string) => {
     if (!walletAddress) {
@@ -103,6 +121,7 @@ const Profile = () => {
     switch (platformName) {
       case 'LeetCode': result = await verifyLeetCode(handle); break;
       case 'Codeforces': result = await verifyCodeforces(handle); break;
+      case 'Twitter': result = { valid: true }; break; // Manual verification for twitter
     }
     
     setIsConnecting(null);
@@ -110,7 +129,8 @@ const Profile = () => {
     if (result && result.valid) {
       const dbColMap: Record<string, string> = {
         'LeetCode': 'leetcode',
-        'Codeforces': 'codeforces'
+        'Codeforces': 'codeforces',
+        'Twitter': 'twitter'
       };
       
       const colName = dbColMap[platformName];
@@ -133,6 +153,7 @@ const Profile = () => {
       switch (platformName) {
         case 'LeetCode': setLeetcodeHandle(handle); break;
         case 'Codeforces': setCodeforcesHandle(handle); break;
+        case 'Twitter': setTwitterHandle(handle); break;
       }
       toast.success(`${platformName} successfully secured!`);
     } else {
@@ -144,7 +165,8 @@ const Profile = () => {
     const dbColMap: Record<string, string> = {
       'GitHub': 'github',
       'LeetCode': 'leetcode',
-      'Codeforces': 'codeforces'
+      'Codeforces': 'codeforces',
+      'Twitter': 'twitter'
     };
     const colName = dbColMap[platformName];
 
@@ -156,6 +178,7 @@ const Profile = () => {
       case 'GitHub': setGithubHandle(null); break;
       case 'LeetCode': setLeetcodeHandle(null); break;
       case 'Codeforces': setCodeforcesHandle(null); break;
+      case 'Twitter': setTwitterHandle(null); break;
     }
   };
 
@@ -182,6 +205,14 @@ const Profile = () => {
       setIsNameLocked(true);
     }
     setIsUpdatingName(false);
+  };
+  
+  const shareToTwitter = () => {
+    const solvedCount = totalSolved || 0;
+    const streak = maxStreak || 0;
+    const text = `Just hit a major milestone on CodeArena! 🔥\n\n🎯 Problems Solved: ${solvedCount}\n⚡ Current Streak: ${streak} Days\n\nCome join me and start your coding journey! 🚀\n\nLink: codearena.xyz\n\n#codearena #web3 #coding #100DaysOfCode @codearena`;
+    const url = `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}`;
+    window.open(url, '_blank');
   };
 
   const msg = motivationalMessages[Math.floor(Math.random() * motivationalMessages.length)];
@@ -223,15 +254,24 @@ const Profile = () => {
                 <p className="text-sm text-muted-foreground font-mono mt-1">{displayAddress}</p>
                 <p className="text-sm text-primary mt-2 italic">"{msg}"</p>
               </div>
-              <div className="flex items-center gap-2">
-                {walletAddress ? (
-                  <>
-                    <span className="px-3 py-1 rounded-full bg-primary/20 text-primary text-sm font-medium">Wallet Connected</span>
-                    <span className="px-3 py-1 rounded-full bg-cyan/20 text-cyan text-sm font-medium">Active</span>
-                  </>
-                ) : (
-                  <span className="px-3 py-1 rounded-full bg-destructive/20 text-destructive text-sm font-medium">Please Connect Wallet</span>
-                )}
+              <div className="flex flex-col items-center gap-3">
+                <div className="flex items-center gap-2">
+                  {walletAddress ? (
+                    <>
+                      <span className="px-3 py-1 rounded-full bg-primary/20 text-primary text-sm font-medium">Wallet Connected</span>
+                      <span className="px-3 py-1 rounded-full bg-cyan/20 text-cyan text-sm font-medium">Active</span>
+                    </>
+                  ) : (
+                    <span className="px-3 py-1 rounded-full bg-destructive/20 text-destructive text-sm font-medium">Please Connect Wallet</span>
+                  )}
+                </div>
+                <button 
+                  onClick={shareToTwitter}
+                  className="w-full flex items-center justify-center gap-2 px-4 py-2 rounded-xl bg-[#1DA1F2]/10 hover:bg-[#1DA1F2]/20 text-[#1DA1F2] border border-[#1DA1F2]/30 transition-all font-bold text-sm"
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.045 4.126H5.078z"/></svg>
+                  Share My Streak
+                </button>
               </div>
             </div>
           </ScrollReveal>
@@ -239,8 +279,8 @@ const Profile = () => {
           {/* Stats */}
           <ScrollReveal>
             <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-8">
-              <AnimatedCounter value={485} label="Problems Solved" />
-              <AnimatedCounter value={127} label="Active Days" />
+              <AnimatedCounter value={totalSolved} label="Problems Solved" />
+              <AnimatedCounter value={maxStreak} label="Active Days" />
               <AnimatedCounter value={activeChallenges.length} label="Challenges Joined" />
               <AnimatedCounter value={8} label="Challenges Won" />
               <AnimatedCounter value={totalStake} label="SOL Staked" duration={1.5} />
