@@ -35,6 +35,9 @@ const Profile = () => {
     dailyActivity 
   } = useUserStore();
   
+  const [displayName, setDisplayName] = useState("");
+  const [isUpdatingName, setIsUpdatingName] = useState(false);
+  const [isNameLocked, setIsNameLocked] = useState(false);
   const [platformData, setPlatformData] = useState<PlatformStats[]>(defaultPlatforms);
   const [isConnecting, setIsConnecting] = useState<string | null>(null);
 
@@ -44,6 +47,8 @@ const Profile = () => {
       supabase.from('user_profiles').select('*').eq('wallet_address', walletAddress).single()
       .then(({data, error}) => {
          if (data) {
+            setDisplayName(data.display_name || "");
+            setIsNameLocked(data.name_updated || false);
             if (data.github) setGithubHandle(data.github);
             if (data.leetcode) setLeetcodeHandle(data.leetcode);
             if (data.codeforces) setCodeforcesHandle(data.codeforces);
@@ -154,6 +159,31 @@ const Profile = () => {
     }
   };
 
+  const updateDisplayName = async () => {
+    if (!walletAddress || isNameLocked) return;
+    if (!displayName.trim()) {
+      toast.error("Name cannot be empty");
+      return;
+    }
+
+    setIsUpdatingName(true);
+    const { error } = await supabase
+      .from('user_profiles')
+      .update({ 
+        display_name: displayName,
+        name_updated: true 
+      })
+      .eq('wallet_address', walletAddress);
+    
+    if (error) {
+      toast.error("Failed to update name");
+    } else {
+      toast.success("Username locked and saved!");
+      setIsNameLocked(true);
+    }
+    setIsUpdatingName(false);
+  };
+
   const msg = motivationalMessages[Math.floor(Math.random() * motivationalMessages.length)];
   const displayAddress = walletAddress ? `${walletAddress.slice(0, 6)}...${walletAddress.slice(-4)}` : "Not Connected";
 
@@ -168,7 +198,28 @@ const Profile = () => {
             <div className="glass-card rounded-2xl p-6 md:p-8 flex flex-col md:flex-row items-center gap-6 mb-8">
               <motion.img src={mascotImg} alt="Avatar" className="w-24 h-24 rounded-2xl" whileHover={{ rotate: 5 }} />
               <div className="text-center md:text-left flex-1">
-                <h1 className="text-2xl font-bold font-display">{githubHandle || "Anonymous Builder"}</h1>
+                <div className="flex flex-col md:flex-row md:items-center gap-3">
+                  {isNameLocked ? (
+                    <h1 className="text-2xl font-bold font-display text-foreground">{displayName || "Anonymous Builder"}</h1>
+                  ) : (
+                    <>
+                      <input 
+                        type="text" 
+                        value={displayName}
+                        onChange={(e) => setDisplayName(e.target.value)}
+                        placeholder="Choose Username..."
+                        className="text-2xl font-bold bg-transparent border-b border-dashed border-white/20 focus:border-primary focus:outline-none"
+                      />
+                      <button 
+                        onClick={updateDisplayName} 
+                        disabled={isUpdatingName}
+                        className="text-[10px] px-2 py-1 rounded-full bg-primary/20 text-primary hover:bg-primary/30 transition-all"
+                      >
+                        {isUpdatingName ? "Saving..." : "Lock & Save"}
+                      </button>
+                    </>
+                  )}
+                </div>
                 <p className="text-sm text-muted-foreground font-mono mt-1">{displayAddress}</p>
                 <p className="text-sm text-primary mt-2 italic">"{msg}"</p>
               </div>

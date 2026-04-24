@@ -55,12 +55,38 @@ export default function ActiveChallengeCard({ challenge }: { challenge: SolChall
     try {
       const verified = await checkActivityToday(challenge.platform, handle);
       if (verified) {
-        const todayStr = new Date().toISOString().split('T')[0];
+        const now = new Date();
+        const todayStr = now.toISOString().split('T')[0];
+        const yesterday = new Date();
+        yesterday.setDate(yesterday.getDate() - 1);
+        const yesterdayStr = yesterday.toISOString().split('T')[0];
         
-        // Update database
+        // 1. Fetch current participant data to calculate streak
+        const { data: partData } = await supabase
+          .from('challenge_participants')
+          .select('current_streak, total_days_solved, last_solved_date')
+          .eq('challenge_id', challenge.id)
+          .eq('wallet_address', useUserStore.getState().walletAddress)
+          .single();
+
+        let newStreak = 1;
+        if (partData) {
+          if (partData.last_solved_date === yesterdayStr) {
+            newStreak = (partData.current_streak || 0) + 1;
+          } else if (partData.last_solved_date === todayStr) {
+            newStreak = partData.current_streak || 1; // Already solved today
+          }
+        }
+
+        // 2. Update database with speed and streak info
         const { error: dbError } = await supabase
           .from('challenge_participants')
-          .update({ last_solved_date: todayStr })
+          .update({ 
+            last_solved_date: todayStr,
+            last_solved_at: now.toISOString(),
+            current_streak: newStreak,
+            total_days_solved: (partData?.total_days_solved || 0) + (partData?.last_solved_date === todayStr ? 0 : 1)
+          })
           .eq('challenge_id', challenge.id)
           .eq('wallet_address', useUserStore.getState().walletAddress);
 
