@@ -1,0 +1,6 @@
+verify the user using the oauth of cf git other
+notificastion css
+i want this   but lets test for the approach a then we migrate to approach b 
+
+the notification popup for new friends should be visible in the profile and other place to 
+live tracker should be update 
