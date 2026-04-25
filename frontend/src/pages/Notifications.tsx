@@ -55,7 +55,7 @@ const Notifications = () => {
     fetchNotifications();
   }, [walletAddress]);
 
-  const handleJoinChallenge = async (challenge: any) => {
+  const handleJoinChallenge = async (challenge: any, notificationId: string) => {
     if (!walletAddress || !publicKey) {
       toast.error("Please connect your wallet first!");
       return;
@@ -72,6 +72,10 @@ const Notifications = () => {
         
       if (existing) {
         toast.info("You have already joined this challenge!");
+        
+        // Even if they already joined, clear the notification so it doesn't stay stuck
+        await supabase.from('notifications').delete().eq('id', notificationId);
+        fetchNotifications();
         return;
       }
       
@@ -114,6 +118,10 @@ const Notifications = () => {
         startDate: new Date(),
         platform: "GitHub" 
       });
+      
+      // Clear the notification
+      await supabase.from('notifications').delete().eq('id', notificationId);
+      fetchNotifications();
       
     } catch (error: any) {
       if (error.code !== 'PGRST116') {
@@ -162,7 +170,7 @@ const Notifications = () => {
                     {n.challenges && (
                       <button 
                          disabled={isProcessingTx}
-                         onClick={() => handleJoinChallenge(n.challenges)}
+                         onClick={() => handleJoinChallenge(n.challenges, n.id)}
                          className="px-4 py-2 bg-primary/20 hover:bg-primary/30 text-primary rounded-lg text-sm font-semibold transition-colors disabled:opacity-50"
                       >
                         Join Stake ({n.challenges.stake} ◎)
