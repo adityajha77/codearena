@@ -27,7 +27,7 @@ export default function TransactionHistory() {
           *,
           challenges(title)
         `)
-        .eq('wallet_address', walletAddress)
+        .ilike('wallet_address', walletAddress)
         .order('created_at', { ascending: false });
 
       if (error) {

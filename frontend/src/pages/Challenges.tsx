@@ -170,16 +170,6 @@ const Challenges = () => {
       toast.info("Transaction sent. Waiting for network confirmation...");
       await connection.confirmTransaction(signature, 'processed');
 
-      // Save participant to Supabase
-      const { error } = await supabase
-        .from('challenge_participants')
-        .insert([{
-          challenge_id: c.id,
-          wallet_address: walletAddress
-        }]);
-
-      if (error) throw error;
-      
       // 1. Join the challenge in the database
       const { error: joinError } = await supabase
         .from('challenge_participants')

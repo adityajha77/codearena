@@ -127,9 +127,25 @@ export default function CreateChallengeDialog({ isOpen, onClose, onSuccess }: Pr
       // 3. Automatically join the creator to the participants
       const { error: partErr } = await supabase.from('challenge_participants').insert([{
         challenge_id: challengeData.id,
-        wallet_address: walletAddress
+        wallet_address: walletAddress,
+        current_streak: 0,
+        total_days_solved: 0,
+        joined_at: new Date().toISOString()
       }]);
       if (partErr) console.error("Could not add participant record:", partErr);
+
+      // 3.5 Save transaction to history
+      const { error: txError } = await supabase.from('transactions').insert([{
+        wallet_address: walletAddress,
+        type: 'Deposit',
+        amount: parseFloat(formData.stake),
+        tx_hash: signature,
+        challenge_id: challengeData.id
+      }]);
+      
+      if (txError) {
+         console.error("Failed to record transaction history", txError);
+      }
 
       // Updates user store tracking
       addChallenge({
