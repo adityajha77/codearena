@@ -31,7 +31,7 @@ const Navbar = () => {
       const { count } = await supabase
         .from('notifications')
         .select('*', { count: 'exact', head: true })
-        .eq('user_wallet', walletAddress)
+        .ilike('recipient_wallet', walletAddress)
         .eq('is_read', false);
       
       setUnreadCount(count || 0);
@@ -48,7 +48,7 @@ const Navbar = () => {
           event: 'INSERT',
           schema: 'public',
           table: 'notifications',
-          filter: `user_wallet=eq.${walletAddress}`
+          filter: `recipient_wallet=eq.${walletAddress}`
         },
         () => fetchNotifications()
       )
