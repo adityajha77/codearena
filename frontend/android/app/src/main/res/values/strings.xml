@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">CodeArena</string>
+    <string name="title_activity_main">CodeArena</string>
+    <string name="package_name">com.codearena.app</string>
+    <string name="custom_url_scheme">com.codearena.app</string>
+</resources>
