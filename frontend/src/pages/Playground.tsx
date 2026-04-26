@@ -21,8 +21,10 @@ export default function Playground() {
   const [difficulty, setDifficulty] = useState("Easy");
   const [duration, setDuration] = useState("30");
   const [tags, setTags] = useState("");
+  const [mode, setMode] = useState<"now" | "schedule">("now");
   const [scheduleTime, setScheduleTime] = useState("");
   const [isCreating, setIsCreating] = useState(false);
+  const [joinRoomId, setJoinRoomId] = useState("");
 
   const handleCreateRoom = async () => {
     if (!publicKey) {
@@ -30,23 +32,23 @@ export default function Playground() {
       return;
     }
 
-    if (!scheduleTime) {
-      toast.error("Please select a schedule time.");
-      return;
-    }
+    if (mode === "schedule") {
+      if (!scheduleTime) {
+        toast.error("Please select a schedule time.");
+        return;
+      }
+      const startTime = new Date(scheduleTime);
+      const now = new Date();
+      const maxTime = addHours(now, 48);
 
-    const startTime = new Date(scheduleTime);
-    const now = new Date();
-    const maxTime = addHours(now, 48);
-
-    if (isBefore(startTime, now)) {
-      toast.error("Schedule time cannot be in the past.");
-      return;
-    }
-
-    if (isAfter(startTime, maxTime)) {
-      toast.error("You can only schedule up to 48 hours in advance.");
-      return;
+      if (isBefore(startTime, now)) {
+        toast.error("Schedule time cannot be in the past.");
+        return;
+      }
+      if (isAfter(startTime, maxTime)) {
+        toast.error("You can only schedule up to 48 hours in advance.");
+        return;
+      }
     }
 
     setIsCreating(true);
@@ -60,10 +62,10 @@ export default function Playground() {
           difficulty,
           question_title: "Pending Selection", // Placeholder, ideally fetch from GitHub here
           question_repo_url: "https://raw.githubusercontent.com/adityajha77/codearena/main/sample-question.json", // Sample
-          question_tags: tags.split(",").map(t => t.trim()),
-          start_time: startTime.toISOString(),
+          question_tags: tags.split(",").map(t => t.trim()).filter(Boolean),
+          start_time: mode === "schedule" ? new Date(scheduleTime).toISOString() : null,
           duration_minutes: parseInt(duration),
-          status: 'scheduled'
+          status: mode === "schedule" ? 'scheduled' : 'waiting'
         })
         .select()
         .single();
@@ -88,9 +90,23 @@ export default function Playground() {
         <Card>
           <CardHeader>
             <CardTitle>Create a Room</CardTitle>
-            <CardDescription>Schedule a coding competition and invite your friends.</CardDescription>
+            <CardDescription>Start a challenge now or schedule one for later.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
+            <div className="flex bg-muted/50 p-1 rounded-xl">
+              <button
+                onClick={() => setMode("now")}
+                className={`flex-1 py-2 text-sm font-medium rounded-lg transition-all ${mode === "now" ? "bg-background shadow text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+              >
+                Play Now
+              </button>
+              <button
+                onClick={() => setMode("schedule")}
+                className={`flex-1 py-2 text-sm font-medium rounded-lg transition-all ${mode === "schedule" ? "bg-background shadow text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+              >
+                Schedule
+              </button>
+            </div>
             <div className="space-y-2">
               <Label>Difficulty</Label>
               <Select value={difficulty} onValueChange={setDifficulty}>
@@ -115,14 +131,16 @@ export default function Playground() {
               <Input placeholder="e.g. DP, Binary Search, Trees" value={tags} onChange={(e) => setTags(e.target.value)} />
             </div>
 
-            <div className="space-y-2">
-              <Label>Schedule Time (Max 48 hours from now)</Label>
-              <Input type="datetime-local" value={scheduleTime} onChange={(e) => setScheduleTime(e.target.value)} />
-            </div>
+            {mode === "schedule" && (
+              <div className="space-y-2">
+                <Label>Schedule Time (Max 48 hours from now)</Label>
+                <Input type="datetime-local" value={scheduleTime} onChange={(e) => setScheduleTime(e.target.value)} />
+              </div>
+            )}
           </CardContent>
           <CardFooter>
             <Button onClick={handleCreateRoom} disabled={isCreating} className="w-full">
-              {isCreating ? "Creating..." : "Create & Schedule Room"}
+              {isCreating ? "Creating..." : mode === "now" ? "Create Room & Wait for Players" : "Schedule Room"}
             </Button>
           </CardFooter>
         </Card>
@@ -130,13 +148,38 @@ export default function Playground() {
         <Card>
           <CardHeader>
             <CardTitle>Join a Room</CardTitle>
-            <CardDescription>Have an invite link? Enter the room ID here.</CardDescription>
+            <CardDescription>Have an invite link or code? Enter the room ID here.</CardDescription>
           </CardHeader>
-          <CardContent>
-             <p className="text-sm text-muted-foreground mb-4">
-               If you received a WhatsApp link, simply click it to join the room directly.
+          <CardContent className="space-y-4">
+             <p className="text-sm text-muted-foreground">
+               If you received a WhatsApp link, simply click it to join the room directly. Or, paste the Room ID below:
              </p>
-             {/* You can add a text input here for Room ID later if needed */}
+             <div className="space-y-2">
+               <Label>Room ID</Label>
+               <Input 
+                 placeholder="e.g. 123e4567-e89b-12d3-a456-426614174000" 
+                 value={joinRoomId} 
+                 onChange={(e) => setJoinRoomId(e.target.value)} 
+               />
+             </div>
+             <Button 
+               className="w-full" 
+               variant="secondary"
+               onClick={() => {
+                 if(!joinRoomId) {
+                   toast.error("Please enter a room ID");
+                   return;
+                 }
+                 // Handle full URL pasting vs just ID
+                 let finalId = joinRoomId.trim();
+                 if(finalId.includes("/playground/")) {
+                   finalId = finalId.split("/playground/")[1];
+                 }
+                 navigate(`/playground/${finalId}`);
+               }}
+             >
+               Join Room
+             </Button>
           </CardContent>
           <CardFooter>
             <Button variant="outline" className="w-full" onClick={() => navigate('/leaderboard')}>

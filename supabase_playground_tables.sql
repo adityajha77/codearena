@@ -1,5 +1,7 @@
 -- Run this in your Supabase SQL Editor
 
+DROP TABLE IF EXISTS playground_participants CASCADE;
+DROP TABLE IF EXISTS playground_rooms CASCADE;
 -- 1. Create playground_rooms table
 CREATE TABLE IF NOT EXISTS playground_rooms (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -8,9 +10,9 @@ CREATE TABLE IF NOT EXISTS playground_rooms (
     question_title TEXT NOT NULL,
     question_tags TEXT[] DEFAULT '{}',
     question_repo_url TEXT NOT NULL, -- URL to the raw JSON of the problem & test cases
-    start_time TIMESTAMP WITH TIME ZONE NOT NULL,
+    start_time TIMESTAMP WITH TIME ZONE,
     duration_minutes INTEGER NOT NULL,
-    status TEXT NOT NULL DEFAULT 'scheduled' CHECK (status IN ('scheduled', 'active', 'review', 'finished')),
+    status TEXT NOT NULL DEFAULT 'waiting' CHECK (status IN ('waiting', 'scheduled', 'active', 'review', 'finished')),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
