@@ -15,6 +15,9 @@ import FAQ from "./pages/FAQ";
 import NotFound from "./pages/NotFound";
 import TransactionHistory from "./pages/TransactionHistory";
 import { WalletSync } from "./components/WalletSync";
+import Playground from "./pages/Playground";
+import PlaygroundRoom from "./pages/PlaygroundRoom";
+import PlaygroundLeaderboard from "./pages/PlaygroundLeaderboard";
 
 const queryClient = new QueryClient();
 
@@ -36,6 +39,9 @@ const App = () => (
           <Route path="/contact" element={<Contact />} />
           <Route path="/faq" element={<FAQ />} />
           <Route path="/history" element={<TransactionHistory />} />
+          <Route path="/playground" element={<Playground />} />
+          <Route path="/playground/:roomId" element={<PlaygroundRoom />} />
+          <Route path="/playground-leaderboard" element={<PlaygroundLeaderboard />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>

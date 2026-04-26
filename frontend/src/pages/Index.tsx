@@ -10,6 +10,7 @@ import Particles from "@/components/Particles";
 import mascotImg from "@/assets/mascot.png";
 import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
 import { useNavigate } from "react-router-dom";
+import PlaygroundAnimation from "@/components/PlaygroundAnimation";
 
 const challengeModes = [
   { title: "Self Challenge", desc: "Test your own discipline. Code daily or lose your stake.", icon: "🧘", color: "primary" },
@@ -297,6 +298,52 @@ const Index = () => {
                 </motion.div>
               </ScrollReveal>
             ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Playground Highlight */}
+      <section className="py-20 bg-muted/10 border-t border-border/30 overflow-hidden relative">
+        <div className="absolute top-0 right-0 -mt-20 -mr-20 w-64 h-64 bg-primary/20 blur-[100px] rounded-full pointer-events-none" />
+        <div className="absolute bottom-0 left-0 -mb-20 -ml-20 w-64 h-64 bg-accent/20 blur-[100px] rounded-full pointer-events-none" />
+        <div className="container mx-auto px-4 relative z-10">
+          <div className="grid md:grid-cols-2 gap-12 items-center">
+            <ScrollReveal>
+              <motion.div
+                initial={{ opacity: 0, x: -30 }}
+                whileInView={{ opacity: 1, x: 0 }}
+                viewport={{ once: true }}
+                transition={{ duration: 0.8 }}
+              >
+                <div className="inline-flex items-center gap-2 glass-card rounded-full px-4 py-1.5 text-sm mb-6 border-primary/30">
+                  <span className="w-2 h-2 rounded-full bg-accent animate-pulse-glow" />
+                  <span className="text-primary font-medium">New Feature</span>
+                </div>
+                <h2 className="text-4xl md:text-5xl font-bold font-display mb-6">
+                  Multiplayer <span className="gradient-text-accent">Playground</span>
+                </h2>
+                <p className="text-lg text-muted-foreground mb-6">
+                  Code with friends, face off in real-time, and have fun with custom timing! Experience an authentic VS Code editor environment directly in your browser. Solve algorithmic challenges together and see who is the fastest.
+                </p>
+                <ul className="space-y-3 mb-8 text-muted-foreground">
+                  <li className="flex items-center gap-2">
+                    <span className="text-primary">✓</span> Real-time presence & sync
+                  </li>
+                  <li className="flex items-center gap-2">
+                    <span className="text-primary">✓</span> Code evaluation against hidden test cases
+                  </li>
+                  <li className="flex items-center gap-2">
+                    <span className="text-primary">✓</span> Fun gamified timers & audio alerts
+                  </li>
+                </ul>
+                <button onClick={() => navigate("/playground")} className="px-8 py-3 rounded-xl bg-accent text-accent-foreground font-semibold glow-accent hover:opacity-90 transition-all">
+                  Enter the Playground
+                </button>
+              </motion.div>
+            </ScrollReveal>
+            <ScrollReveal delay={0.3}>
+              <PlaygroundAnimation />
+            </ScrollReveal>
           </div>
         </div>
       </section>
