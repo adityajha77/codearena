@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
@@ -9,6 +9,7 @@ import { useWallet } from "@solana/wallet-adapter-react";
 import { toast } from "sonner";
 import { createClient } from "@supabase/supabase-js";
 import { addHours, isAfter, isBefore } from "date-fns";
+import { ArrowLeft, Home, Trophy } from "lucide-react";
 
 // Ensure you have configured supabaseClient properly in your project
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
@@ -20,11 +21,35 @@ export default function Playground() {
   const { publicKey } = useWallet();
   const [difficulty, setDifficulty] = useState("Easy");
   const [duration, setDuration] = useState("30");
+  const [roomName, setRoomName] = useState("");
   const [tags, setTags] = useState("");
   const [mode, setMode] = useState<"now" | "schedule">("now");
   const [scheduleTime, setScheduleTime] = useState("");
   const [isCreating, setIsCreating] = useState(false);
   const [joinRoomId, setJoinRoomId] = useState("");
+  const [activeChallenge, setActiveChallenge] = useState<any>(null);
+
+  useEffect(() => {
+    const checkActiveChallenge = async () => {
+      if (!publicKey) return;
+      
+      // Get all rooms where user is a participant and room is not finished
+      const { data, error } = await supabase
+        .from('playground_participants')
+        .select('room_id, playground_rooms(*)')
+        .eq('wallet_address', publicKey.toBase58());
+      
+      if (data) {
+        const ongoing = data.find((p: any) => 
+          ['waiting', 'active'].includes(p.playground_rooms.status)
+        );
+        if (ongoing) {
+          setActiveChallenge(ongoing.playground_rooms);
+        }
+      }
+    };
+    checkActiveChallenge();
+  }, [publicKey]);
 
   const handleCreateRoom = async () => {
     if (!publicKey) {
@@ -51,6 +76,11 @@ export default function Playground() {
       }
     }
 
+    if (!roomName.trim()) {
+      toast.error("Please enter a contest name");
+      return;
+    }
+
     setIsCreating(true);
 
     try {
@@ -59,6 +89,7 @@ export default function Playground() {
         .from('playground_rooms')
         .insert({
           host_address: publicKey.toBase58(),
+          room_name: roomName,
           difficulty,
           question_title: "Pending Selection", // Placeholder, ideally fetch from GitHub here
           question_repo_url: "sample_challenge.json", // Filename in your 'challenges' bucket
@@ -72,17 +103,16 @@ export default function Playground() {
 
       if (error) throw error;
 
-      toast.success("Room created successfully!");
-
       // Add host as participant
       await supabase
         .from('playground_participants')
         .insert({
           room_id: data.id,
           wallet_address: publicKey.toBase58(),
-          score: 0
+          joined_at: new Date().toISOString()
         });
 
+      toast.success("Room created successfully!");
       navigate(`/playground/${data.id}`);
 
     } catch (error: any) {
@@ -94,15 +124,54 @@ export default function Playground() {
 
   return (
     <div className="container max-w-4xl py-10">
-      <h1 className="text-4xl font-bold mb-8">Multiplayer Playground</h1>
+      <div className="flex items-center justify-between mb-8">
+        <h1 className="text-4xl font-bold">Multiplayer Playground</h1>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={() => navigate('/playground/leaderboard')} className="gap-2">
+            <Trophy className="w-4 h-4" />
+            Previous Results
+          </Button>
+          <Button variant="ghost" onClick={() => navigate('/')} className="gap-2">
+            <Home className="w-4 h-4" />
+            Back Home
+          </Button>
+        </div>
+      </div>
       
+      {activeChallenge && (
+        <Card className="mb-8 border-primary bg-primary/5 animate-in fade-in slide-in-from-top-4">
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle className="text-xl flex items-center gap-2">
+                  <div className="w-2 h-2 rounded-full bg-primary animate-pulse" />
+                  Ongoing Challenge
+                </CardTitle>
+                <CardDescription>You are currently participating in: {activeChallenge.question_title}</CardDescription>
+              </div>
+              <Button onClick={() => navigate(`/playground/${activeChallenge.id}`)} className="glow-primary">
+                Resume Challenge
+              </Button>
+            </div>
+          </CardHeader>
+        </Card>
+      )}
+
       <div className="grid gap-6 md:grid-cols-2">
         <Card>
           <CardHeader>
-            <CardTitle>Create a Room</CardTitle>
-            <CardDescription>Start a challenge now or schedule one for later.</CardDescription>
+            <CardTitle>Create New Challenge</CardTitle>
+            <CardDescription>Set up a coding room for your friends.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <Label>Contest Name</Label>
+              <Input 
+                placeholder="e.g. Weekly Python Sprint" 
+                value={roomName}
+                onChange={(e) => setRoomName(e.target.value)}
+              />
+            </div>
             <div className="flex bg-muted/50 p-1 rounded-xl">
               <button
                 onClick={() => setMode("now")}

@@ -40,8 +40,8 @@ const App = () => (
           <Route path="/faq" element={<FAQ />} />
           <Route path="/history" element={<TransactionHistory />} />
           <Route path="/playground" element={<Playground />} />
+          <Route path="/playground/leaderboard" element={<PlaygroundLeaderboard />} />
           <Route path="/playground/:roomId" element={<PlaygroundRoom />} />
-          <Route path="/playground-leaderboard" element={<PlaygroundLeaderboard />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>

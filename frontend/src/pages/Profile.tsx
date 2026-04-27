@@ -233,14 +233,18 @@ const Profile = () => {
     setIsUpdatingName(true);
     const { error } = await supabase
       .from('user_profiles')
-      .update({ 
+      .upsert({ 
+        wallet_address: walletAddress,
         display_name: displayName,
         name_updated: true 
-      })
-      .eq('wallet_address', walletAddress);
+      });
     
     if (error) {
-      toast.error("Failed to update name");
+      if (error.code === '23505') {
+        toast.error("This name is already taken. Please choose a unique one!");
+      } else {
+        toast.error("Failed to update name: " + error.message);
+      }
     } else {
       toast.success("Username locked and saved!");
       setIsNameLocked(true);
@@ -271,7 +275,12 @@ const Profile = () => {
               <div className="text-center md:text-left flex-1">
                 <div className="flex flex-col md:flex-row md:items-center gap-3">
                   {isNameLocked ? (
-                    <h1 className="text-2xl font-bold font-display text-foreground">{displayName || "Anonymous Builder"}</h1>
+                    <div className="flex items-center gap-2">
+                      <h1 className="text-2xl font-bold font-display text-foreground">{displayName || "Anonymous Builder"}</h1>
+                      <span className="px-2 py-0.5 rounded-full bg-primary/10 text-primary text-[10px] font-bold uppercase tracking-tighter border border-primary/20">
+                        Identity Locked
+                      </span>
+                    </div>
                   ) : (
                     <>
                       <input 

@@ -4,12 +4,12 @@ import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/componen
 import { Button } from "@/components/ui/button";
 import Editor from "@monaco-editor/react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
 import { executeCode, validateTestCases } from "@/lib/piston";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { toast } from "sonner";
 import { createClient } from "@supabase/supabase-js";
-import { Clock, Users, Play, Upload, User, Copy } from "lucide-react";
+import { Clock, Users, Play, Upload, User, Copy, Trash2, Home, RefreshCw, ArrowLeft } from "lucide-react";
 import { usePlaygroundTimer } from "@/hooks/usePlaygroundTimer";
 import { useUserStore } from "@/store/userStore";
 
@@ -46,6 +46,9 @@ export default function PlaygroundRoom() {
 
   const [questionData, setQuestionData] = useState<any>(null);
   const [testResults, setTestResults] = useState<any>(null);
+  const [isStandingsOpen, setIsStandingsOpen] = useState(true);
+  const [isSubmitted, setIsSubmitted] = useState(false);
+  const [activeTestTab, setActiveTestTab] = useState(0);
 
   useEffect(() => {
     // Fetch room details
@@ -100,46 +103,137 @@ export default function PlaygroundRoom() {
           });
       }
     };
-    joinParticipant();
 
-    // Setup Supabase Presence
+    // Fetch room details and participants with profile names
+    const fetchInitialData = async () => {
+      if (!roomId) return;
+      
+      const { data: room } = await supabase
+        .from('playground_rooms')
+        .select('*')
+        .eq('id', roomId)
+        .single();
+      if (room) setRoomData(room);
+
+      // 1. Fetch participants
+      const { data: parts } = await supabase
+        .from('playground_participants')
+        .select('*')
+        .eq('room_id', roomId);
+      
+      if (parts) {
+        // 2. Fetch profiles for these wallets to get names
+        const wallets = parts.map(p => p.wallet_address);
+        const { data: profiles } = await supabase
+          .from('user_profiles')
+          .select('wallet_address, display_name')
+          .in('wallet_address', wallets);
+
+        const profileMap = new Map(profiles?.map(p => [p.wallet_address, p.display_name]) || []);
+
+        setParticipants(parts.map((p: any) => ({
+          wallet: p.wallet_address,
+          name: profileMap.get(p.wallet_address) || p.wallet_address.slice(0, 6) + "...",
+          score: p.score,
+          passed: p.test_cases_passed,
+          total: p.total_test_cases,
+          online: false
+        })));
+      }
+    };
+
+    // Check if user has already submitted
+    const checkSubmission = async () => {
+      if (!roomId || !publicKey) return;
+      const { data } = await supabase
+        .from('playground_participants')
+        .select('code_submission')
+        .eq('room_id', roomId)
+        .eq('wallet_address', publicKey.toBase58())
+        .single();
+      if (data?.code_submission) {
+        setIsSubmitted(true);
+      }
+    };
+
+    fetchInitialData();
+    joinParticipant();
+    checkSubmission();
+
+    // Re-fetch after a short delay to ensure host/initial join is captured
+    const timeout = setTimeout(fetchInitialData, 1500);
+    return () => clearTimeout(timeout);
+  }, [roomId, publicKey]);
+
+  useEffect(() => {
+    // Setup Supabase Presence for live "Online" status
     if (!roomId || !publicKey) return;
 
-    const channel = supabase.channel(`room:${roomId}`, {
-      config: {
-        presence: {
-          key: publicKey.toBase58(),
-        },
-      },
-    });
-
+    const channel = supabase.channel(`playground_presence:${roomId}`);
     channel
       .on('presence', { event: 'sync' }, () => {
         const state = channel.presenceState();
-        const activeUsers = Object.keys(state).map((key) => ({
-          wallet: key,
-          ...state[key][0],
-        }));
-        setParticipants(activeUsers);
+        const activeWallets = Object.keys(state);
+        
+        setParticipants(prev => prev.map(p => ({
+          ...p,
+          online: activeWallets.includes(p.wallet)
+        })));
       })
       .subscribe(async (status) => {
         if (status === 'SUBSCRIBED') {
           await channel.track({
             online_at: new Date().toISOString(),
+            wallet: publicKey.toBase58(),
             name: displayName,
-            passed: 0,
-            total: questionData?.testCases?.length || 0
           });
         }
       });
 
-    // Setup Supabase Postgres listener for room updates
+    // Setup Supabase Postgres listener for room updates (Auto-start)
     const roomChannel = supabase.channel(`room_updates:${roomId}`)
       .on(
         'postgres_changes',
         { event: 'UPDATE', schema: 'public', table: 'playground_rooms', filter: `id=eq.${roomId}` },
         (payload) => {
           setRoomData(payload.new);
+          // If status changed to active, refresh participants to be safe
+          if (payload.new.status === 'active') {
+             toast.success("Host has started the challenge!");
+          }
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'playground_participants', filter: `room_id=eq.${roomId}` },
+        () => {
+          // Refresh participants when someone new joins
+          const refreshParticipants = async () => {
+             const { data: parts } = await supabase
+               .from('playground_participants')
+               .select('*')
+               .eq('room_id', roomId);
+             
+             if (parts) {
+                const wallets = parts.map(p => p.wallet_address);
+                const { data: profiles } = await supabase
+                  .from('user_profiles')
+                  .select('wallet_address, display_name')
+                  .in('wallet_address', wallets);
+
+                const profileMap = new Map(profiles?.map(p => [p.wallet_address, p.display_name]) || []);
+
+                setParticipants(parts.map((p: any) => ({
+                  wallet: p.wallet_address,
+                  name: profileMap.get(p.wallet_address) || p.wallet_address.slice(0, 6) + "...",
+                  score: p.score,
+                  passed: p.test_cases_passed,
+                  total: p.total_test_cases,
+                  online: false
+                })));
+             }
+          };
+          refreshParticipants();
         }
       )
       .subscribe();
@@ -149,6 +243,27 @@ export default function PlaygroundRoom() {
       supabase.removeChannel(roomChannel);
     };
   }, [roomId, publicKey]);
+
+  useEffect(() => {
+    // Automatically SUBMIT and finish challenge when timer ends
+    const autoSubmitAndFinish = async () => {
+      if (currentPhase === 'active' && timeRemaining === 0 && roomData?.status === 'active') {
+        // Auto-submit if not already submitted
+        if (!isSubmitted) {
+          await handleSubmit();
+        }
+
+        const { error } = await supabase
+          .from('playground_rooms')
+          .update({ status: 'finished' })
+          .eq('id', roomId);
+        if (!error) {
+          toast.info("Time is up! Code submitted automatically.");
+        }
+      }
+    };
+    autoSubmitAndFinish();
+  }, [timeRemaining, currentPhase, roomData?.status, roomId, isSubmitted]);
 
   useEffect(() => {
     // Play beep sound when near end
@@ -183,28 +298,6 @@ export default function PlaygroundRoom() {
         toast.error(`${results.error}: ${results.details || ""}`);
       } else {
         toast.success(`Passed ${results.passed}/${results.total} test cases!`);
-        
-        // Update database for persistence
-        if (publicKey && roomId) {
-          await supabase
-            .from('playground_participants')
-            .update({
-              test_cases_passed: results.passed,
-              total_test_cases: results.total,
-              test_results: results.results
-            })
-            .eq('room_id', roomId)
-            .eq('wallet_address', publicKey.toBase58());
-        }
-
-        // Update presence for real-time standings
-        const channel = supabase.channel(`room:${roomId}`);
-        await channel.track({
-          online_at: new Date().toISOString(),
-          name: displayName,
-          passed: results.passed,
-          total: results.total
-        });
       }
     } catch (e: any) {
       toast.error(e.message);
@@ -227,13 +320,14 @@ export default function PlaygroundRoom() {
           .update({
             code_submission: code,
             language: language,
-            score: testResults.passed * 10 - (testResults.total - testResults.passed) * 2 // Sample scoring logic
+            score: testResults.passed * 10 - (testResults.total - testResults.passed) * 2
           })
           .eq('room_id', roomId)
           .eq('wallet_address', publicKey.toBase58());
         
         if (error) throw error;
-        toast.success("Code submitted successfully!");
+        setIsSubmitted(true);
+        toast.success("Code submitted! Results will be declared soon.");
       }
     } catch (e: any) {
       toast.error(e.message);
@@ -253,6 +347,23 @@ export default function PlaygroundRoom() {
       toast.success("Challenge Started!");
     } catch (e: any) {
       toast.error(e.message || "Failed to start challenge");
+    }
+  };
+
+  const handleDeleteChallenge = async () => {
+    if (!roomId || !window.confirm("Are you sure you want to delete this challenge? This will remove all participants.")) return;
+    
+    try {
+      const { error } = await supabase
+        .from('playground_rooms')
+        .delete()
+        .eq('id', roomId);
+      
+      if (error) throw error;
+      toast.success("Challenge deleted.");
+      window.location.href = '/playground';
+    } catch (e: any) {
+      toast.error(e.message || "Failed to delete challenge");
     }
   };
 
@@ -301,18 +412,39 @@ export default function PlaygroundRoom() {
                   <Users className="w-4 h-4 text-primary" />
                   Players Joined ({participants.length})
                 </h3>
-                <Button 
-                  variant="outline" 
-                  size="sm" 
-                  className="h-8 text-xs"
-                  onClick={() => {
-                    navigator.clipboard.writeText(window.location.href);
-                    toast.success("Invite link copied to clipboard!");
-                  }}
-                >
-                  <Copy className="w-3 h-3 mr-2" />
-                  Copy Invite Link
-                </Button>
+                <div className="flex gap-2">
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    className="h-8 text-xs"
+                    onClick={() => {
+                      navigator.clipboard.writeText(window.location.href);
+                      toast.success("Invite link copied to clipboard!");
+                    }}
+                  >
+                    <Copy className="w-3 h-3 mr-2" />
+                    Copy Link
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 text-muted-foreground hover:text-primary transition-colors"
+                    onClick={() => window.location.reload()}
+                  >
+                    <RefreshCw className="w-4 h-4" />
+                  </Button>
+                  {isHost && (
+                    <Button 
+                      variant="destructive" 
+                      size="sm" 
+                      className="h-8 text-xs"
+                      onClick={handleDeleteChallenge}
+                    >
+                      <Trash2 className="w-3 h-3 mr-2" />
+                      Delete Room
+                    </Button>
+                  )}
+                </div>
               </div>
               <div className="space-y-2 max-h-[250px] overflow-y-auto pr-2">
                 {participants.length === 0 ? (
@@ -350,11 +482,61 @@ export default function PlaygroundRoom() {
     );
   }
 
+  // STRICT LOCK: If status is finished OR timer phase is finished, show final results
+  if (roomData.status === 'finished' || currentPhase === 'finished') {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-screen bg-background p-6">
+        <Card className="w-full max-w-lg shadow-2xl border-primary/20 animate-in fade-in zoom-in-95 duration-500">
+          <CardHeader className="text-center pb-2">
+            <div className="w-16 h-16 bg-primary/10 text-primary rounded-full flex items-center justify-center mx-auto mb-4 border border-primary/20">
+              <Users className="w-8 h-8" />
+            </div>
+            <CardTitle className="text-3xl font-display">{roomData.room_name || roomData.question_title}</CardTitle>
+            <CardDescription className="text-md mt-1">Waiting for the host to start the "fight"...</CardDescription>
+          </CardHeader>
+          <CardContent className="p-0">
+            <div className="divide-y">
+              {participants.sort((a,b) => (b.score || 0) - (a.score || 0)).map((p, i) => (
+                <div key={i} className={`flex items-center gap-4 p-6 ${p.wallet === publicKey?.toBase58() ? "bg-primary/5" : ""}`}>
+                  <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-xl ${
+                    i === 0 ? "bg-yellow-500 text-white shadow-lg" : 
+                    i === 1 ? "bg-slate-300 text-slate-700" : 
+                    i === 2 ? "bg-amber-600 text-white" : "bg-muted text-muted-foreground"
+                  }`}>
+                    {i + 1}
+                  </div>
+                  <div className="flex-1">
+                    <p className="font-bold text-lg">{p.wallet === publicKey?.toBase58() ? "You" : p.name}</p>
+                    <p className="text-sm text-muted-foreground font-mono truncate">{p.wallet}</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-2xl font-black text-primary">{p.score || 0}</p>
+                    <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold">Total Points</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+          <CardFooter className="bg-muted/30 p-6 flex justify-between items-center">
+            <p className="text-sm text-muted-foreground italic">Verification complete. Great job everyone!</p>
+            <Button onClick={() => window.location.href = '/playground'}>Return to Hub</Button>
+          </CardFooter>
+        </Card>
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col h-screen bg-background">
-      <header className="flex items-center justify-between px-6 py-3 border-b">
+      <header className="flex items-center justify-between px-6 py-3 border-b bg-card/50 backdrop-blur-md sticky top-0 z-30">
         <div className="flex items-center gap-4">
-          <h1 className="font-bold text-xl">{roomData.question_title}</h1>
+          <Button variant="ghost" size="icon" onClick={() => window.location.href = '/playground'} className="hover:bg-primary/10">
+            <ArrowLeft className="w-5 h-5" />
+          </Button>
+          <div>
+            <h1 className="font-bold text-xl tracking-tight">{roomData.room_name || roomData.question_title}</h1>
+            <p className="text-[10px] text-muted-foreground uppercase font-black tracking-widest">{roomData.question_title}</p>
+          </div>
           <div className="flex gap-2">
              {roomData.question_tags?.map((tag: string) => (
                <span key={tag} className="bg-primary/10 text-primary px-2 py-1 rounded text-xs font-medium">
@@ -365,6 +547,12 @@ export default function PlaygroundRoom() {
         </div>
         
         <div className="flex items-center gap-6">
+          {publicKey?.toBase58() === roomData.host_address && (
+            <Button variant="ghost" size="sm" onClick={handleDeleteChallenge} className="text-red-500 hover:text-red-600 hover:bg-red-50">
+              <Trash2 className="w-4 h-4 mr-2" />
+              Delete
+            </Button>
+          )}
           <div className="flex items-center gap-2 font-mono text-lg">
             <Clock className="w-5 h-5 text-muted-foreground" />
             <div className="flex flex-col">
@@ -381,10 +569,36 @@ export default function PlaygroundRoom() {
         </div>
       </header>
 
-      <div className="flex-1 overflow-hidden">
+      <div className="flex-1 overflow-hidden relative">
+        {isSubmitted && (
+          <div className="absolute inset-0 z-50 bg-background/80 backdrop-blur-md flex items-center justify-center p-6 text-center">
+            <Card className="max-w-md shadow-2xl border-primary/20">
+              <CardHeader>
+                <div className="w-16 h-16 bg-primary/10 text-primary rounded-full flex items-center justify-center mx-auto mb-4">
+                  <Upload className="w-8 h-8" />
+                </div>
+                <CardTitle className="text-2xl">Submission Received!</CardTitle>
+                <CardDescription className="text-lg mt-2">
+                  Thank you for joining. Sit tight! We are verifying the codes.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <p className="text-sm text-muted-foreground">
+                  Final results will be declared once the timer ends. You cannot modify your submission now.
+                </p>
+              </CardContent>
+              <CardFooter className="flex justify-center">
+                <Button variant="outline" onClick={() => window.location.href = '/playground'}>
+                  Back to Playground
+                </Button>
+              </CardFooter>
+            </Card>
+          </div>
+        )}
+
         <ResizablePanelGroup direction="horizontal">
           
-          <ResizablePanel defaultSize={40} minSize={30}>
+          <ResizablePanel defaultSize={35} minSize={25}>
             <div className="h-full overflow-y-auto p-6">
               <h2 className="text-2xl font-bold mb-4">{questionData?.title || "Loading Problem..."}</h2>
               <div className="prose dark:prose-invert max-w-none">
@@ -399,7 +613,7 @@ export default function PlaygroundRoom() {
           
           <ResizableHandle withHandle />
           
-          <ResizablePanel defaultSize={60}>
+          <ResizablePanel defaultSize={65}>
             <div className="flex flex-col h-full border-l">
               <div className="flex items-center justify-between px-4 py-2 bg-muted/50 border-b">
                 <Select value={language} onValueChange={(val) => {
@@ -419,29 +633,112 @@ export default function PlaygroundRoom() {
                 </Select>
                 
                 <div className="flex gap-2">
-                  <Button variant="secondary" size="sm" onClick={handleRun} disabled={isRunning}>
+                  <Button variant="secondary" size="sm" onClick={handleRun} disabled={isRunning || isSubmitted || currentPhase === 'finished'}>
                     <Play className="w-4 h-4 mr-2" />
                     Run
                   </Button>
-                  <Button size="sm" onClick={handleSubmit}>
+                  <Button size="sm" onClick={handleSubmit} disabled={isRunning || isSubmitted || currentPhase === 'finished'}>
                     <Upload className="w-4 h-4 mr-2" />
                     Submit
                   </Button>
                 </div>
               </div>
               
-              <div className="flex-1">
-                <Editor
-                  height="100%"
-                  language={language}
-                  theme="vs-dark"
-                  value={code}
-                  onChange={(val) => setCode(val || "")}
-                  options={{
-                    minimap: { enabled: false },
-                    fontSize: 14,
-                  }}
-                />
+              <div className="flex-1 min-h-0">
+                <ResizablePanelGroup direction="vertical">
+                  <ResizablePanel defaultSize={60} minSize={30}>
+                    <Editor
+                      height="100%"
+                      language={language}
+                      theme="vs-dark"
+                      value={code}
+                      onChange={(val) => setCode(val || "")}
+                      options={{
+                        minimap: { enabled: false },
+                        fontSize: 14,
+                        readOnly: isSubmitted || currentPhase === 'finished'
+                      }}
+                    />
+                  </ResizablePanel>
+                  <ResizableHandle withHandle />
+                  <ResizablePanel defaultSize={40} minSize={10}>
+                    <div className="h-full bg-background flex flex-col overflow-hidden">
+                      <div className="px-4 py-2 bg-muted/30 border-b flex items-center justify-between">
+                         <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Test Results</span>
+                         {testResults && (
+                           <div className="flex gap-3 items-center">
+                             <span className="text-[10px] font-bold text-green-500 uppercase tracking-tight">Passed: {testResults.passed}</span>
+                             <span className="text-[10px] font-bold text-red-500 uppercase tracking-tight">Failed: {testResults.total - testResults.passed}</span>
+                           </div>
+                         )}
+                      </div>
+                      <div className="flex-1 overflow-y-auto p-4">
+                        {!testResults ? (
+                          <div className="h-full flex items-center justify-center text-muted-foreground text-sm italic">
+                            Run your code to see test results here.
+                          </div>
+                        ) : (
+                          <div className="space-y-4">
+                            {testResults.error && (
+                              <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-lg animate-in fade-in slide-in-from-top-2">
+                                <p className="text-xs font-bold text-red-500 mb-1 flex items-center gap-2">
+                                   <div className="w-1.5 h-1.5 rounded-full bg-red-500" />
+                                   {testResults.error}
+                                </p>
+                                <pre className="text-[10px] font-mono text-red-400/80 break-all whitespace-pre-wrap">{testResults.details}</pre>
+                              </div>
+                            )}
+
+                            <div className="flex gap-2 border-b pb-2 overflow-x-auto">
+                              {testResults.results?.map((_: any, i: number) => (
+                                <button
+                                  key={i}
+                                  onClick={() => setActiveTestTab(i)}
+                                  className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all flex items-center gap-2 ${
+                                    activeTestTab === i 
+                                    ? "bg-primary text-primary-foreground shadow-md" 
+                                    : _.passed ? "bg-green-500/10 text-green-500 hover:bg-green-500/20" : "bg-red-500/10 text-red-500 hover:bg-red-500/20"
+                                  }`}
+                                >
+                                  <div className={`w-1.5 h-1.5 rounded-full ${_.passed ? "bg-green-500" : "bg-red-500"}`} />
+                                  Case {i + 1}
+                                </button>
+                              ))}
+                            </div>
+                            
+                            {testResults.results?.[activeTestTab] && (
+                              <div className="space-y-3 animate-in fade-in slide-in-from-bottom-2">
+                                <div className="flex items-center justify-between">
+                                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-widest ${
+                                    testResults.results[activeTestTab].passed ? "bg-green-500/20 text-green-500" : "bg-red-500/20 text-red-500"
+                                  }`}>
+                                    {testResults.results[activeTestTab].passed ? "Accepted" : "Wrong Answer"}
+                                  </span>
+                                </div>
+                                <div>
+                                  <label className="text-[10px] font-bold text-muted-foreground uppercase">Input</label>
+                                  <pre className="mt-1 p-2 bg-muted/50 rounded text-xs font-mono border">{testResults.results[activeTestTab].input}</pre>
+                                </div>
+                                <div className="grid grid-cols-2 gap-4">
+                                  <div>
+                                    <label className="text-[10px] font-bold text-muted-foreground uppercase">Expected</label>
+                                    <pre className="mt-1 p-2 bg-muted/50 rounded text-xs font-mono border">{testResults.results[activeTestTab].expected}</pre>
+                                  </div>
+                                  <div>
+                                    <label className="text-[10px] font-bold text-muted-foreground uppercase">Actual</label>
+                                    <pre className={`mt-1 p-2 rounded text-xs font-mono border ${testResults.results[activeTestTab].passed ? "bg-green-500/5 text-green-500 border-green-500/20" : "bg-red-500/5 text-red-500 border-red-500/20"}`}>
+                                      {testResults.results[activeTestTab].actual || <span className="italic opacity-50">Empty Output</span>}
+                                    </pre>
+                                  </div>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </ResizablePanel>
+                </ResizablePanelGroup>
               </div>
             </div>
           </ResizablePanel>
@@ -450,38 +747,43 @@ export default function PlaygroundRoom() {
       </div>
 
       {/* Live Standings Sidebar Overlay */}
-      <div className="fixed bottom-6 right-6 w-72 bg-card/95 backdrop-blur-sm border shadow-2xl rounded-2xl overflow-hidden animate-in slide-in-from-right-10">
-        <div className="bg-primary/10 px-4 py-3 border-b flex items-center justify-between">
-          <h3 className="font-bold text-sm flex items-center gap-2">
-            <Users className="w-4 h-4 text-primary" />
-            Live Standings
-          </h3>
-          <span className="text-[10px] bg-background px-1.5 py-0.5 rounded border font-mono">
-            {participants.length} LIVE
-          </span>
-        </div>
-        <div className="p-2 space-y-1 max-h-[300px] overflow-y-auto">
-          {participants.sort((a,b) => (b.passed || 0) - (a.passed || 0)).map((p, i) => (
-            <div key={i} className={`flex items-center gap-2 p-2 rounded-lg text-xs ${p.wallet === publicKey?.toBase58() ? "bg-primary/5 border border-primary/20" : ""}`}>
-              <div className="w-6 h-6 rounded-full bg-muted flex items-center justify-center text-[10px] font-bold">
-                {i + 1}
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="font-medium truncate">{p.name || "Coder"}</p>
-                <div className="flex items-center gap-2 mt-0.5">
-                  <div className="flex-1 h-1 bg-muted rounded-full overflow-hidden">
-                    <div 
-                      className="h-full bg-primary transition-all duration-500" 
-                      style={{ width: `${((p.passed || 0) / (p.total || 1)) * 100}%` }}
-                    />
+      <div className={`fixed top-20 right-0 h-[calc(100vh-120px)] transition-all duration-300 z-40 flex ${isStandingsOpen ? "w-72" : "w-10"}`}>
+        <button 
+          onClick={() => setIsStandingsOpen(!isStandingsOpen)}
+          className="w-10 h-10 bg-card border border-r-0 flex items-center justify-center rounded-l-xl self-center shadow-lg hover:bg-muted transition-colors"
+        >
+          <Users className={`w-4 h-4 transition-transform ${isStandingsOpen ? "" : "rotate-180"}`} />
+        </button>
+        
+        <div className={`flex-1 bg-card/95 backdrop-blur-sm border shadow-2xl overflow-hidden flex flex-col ${isStandingsOpen ? "opacity-100" : "opacity-0 pointer-events-none"}`}>
+          <div className="bg-primary/10 px-4 py-3 border-b flex items-center justify-between">
+            <h3 className="font-bold text-sm flex items-center gap-2 text-primary">
+              Live Standings
+            </h3>
+            <span className="text-[10px] bg-background px-1.5 py-0.5 rounded border font-mono font-bold">
+              {participants.length} LIVE
+            </span>
+          </div>
+          <div className="flex-1 p-2 space-y-1 overflow-y-auto">
+            {participants.sort((a,b) => (b.passed || 0) - (a.passed || 0)).map((p, i) => (
+              <div key={i} className={`flex items-center gap-2 p-2 rounded-lg text-xs ${p.wallet === publicKey?.toBase58() ? "bg-primary/5 border border-primary/20" : "hover:bg-muted/50"}`}>
+                <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold ${
+                  p.online ? "bg-green-500/20 text-green-500" : "bg-muted text-muted-foreground"
+                }`}>
+                  {i + 1}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-1.5">
+                    <p className="font-medium truncate">{p.wallet === publicKey?.toBase58() ? "You" : p.name}</p>
+                    {p.online && <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />}
                   </div>
-                  <span className="text-[9px] text-muted-foreground whitespace-nowrap">
-                    {p.passed || 0}/{p.total || 0}
-                  </span>
+                  <p className="text-[10px] text-muted-foreground font-mono">
+                    {p.wallet.slice(0, 4) + "..." + p.wallet.slice(-4)}
+                  </p>
                 </div>
               </div>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
       </div>
     </div>

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { differenceInSeconds, addMinutes, isAfter, isBefore } from 'date-fns';
 
-type PlaygroundStatus = 'scheduled' | 'active' | 'review' | 'finished';
+type PlaygroundStatus = 'scheduled' | 'active' | 'finished';
 
 export function usePlaygroundTimer(
   status: PlaygroundStatus,
@@ -18,8 +18,6 @@ export function usePlaygroundTimer(
       const now = new Date();
       const startTime = new Date(startTimeStr);
       const codingEndTime = addMinutes(startTime, durationMinutes);
-      // Review phase is 20 minutes after coding ends
-      const reviewEndTime = addMinutes(codingEndTime, 20);
 
       if (isBefore(now, startTime)) {
         // Scheduled
@@ -29,10 +27,6 @@ export function usePlaygroundTimer(
         // Active Coding
         setCurrentPhase('active');
         setTimeRemaining(differenceInSeconds(codingEndTime, now));
-      } else if (isAfter(now, codingEndTime) && isBefore(now, reviewEndTime)) {
-        // Review Phase
-        setCurrentPhase('review');
-        setTimeRemaining(differenceInSeconds(reviewEndTime, now));
       } else {
         // Finished
         setCurrentPhase('finished');
