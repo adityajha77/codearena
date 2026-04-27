@@ -23,6 +23,14 @@ export default function PlaygroundRoom() {
   const { publicKey } = useWallet();
   const [code, setCode] = useState("// Write your code here");
   const [language, setLanguage] = useState("javascript");
+
+  const CODE_TEMPLATES: Record<string, string> = {
+    javascript: "// Write your JavaScript code here",
+    python: "# Write your Python code here",
+    cpp: "// Write your C++ code here",
+    java: "// Write your Java code here",
+    c: "// Write your C code here",
+  };
   const [roomData, setRoomData] = useState<any>(null);
   const [participants, setParticipants] = useState<any[]>([]);
   const [isRunning, setIsRunning] = useState(false);
@@ -36,6 +44,9 @@ export default function PlaygroundRoom() {
     roomData?.duration_minutes
   );
 
+  const [questionData, setQuestionData] = useState<any>(null);
+  const [testResults, setTestResults] = useState<any>(null);
+
   useEffect(() => {
     // Fetch room details
     const fetchRoom = async () => {
@@ -48,9 +59,48 @@ export default function PlaygroundRoom() {
       
       if (data) {
         setRoomData(data);
+        // Fetch question data from private storage
+        if (data.question_repo_url) {
+          try {
+            const { data: fileData, error: downloadError } = await supabase
+              .storage
+              .from('challenges')
+              .download(data.question_repo_url);
+            
+            if (downloadError) throw downloadError;
+            
+            const text = await fileData.text();
+            setQuestionData(JSON.parse(text));
+          } catch (e) {
+            console.error("Failed to fetch question data from storage", e);
+          }
+        }
       }
     };
     fetchRoom();
+
+    // Auto-join participant logic
+    const joinParticipant = async () => {
+      if (!roomId || !publicKey) return;
+      
+      const { data: existing } = await supabase
+        .from('playground_participants')
+        .select('id')
+        .eq('room_id', roomId)
+        .eq('wallet_address', publicKey.toBase58())
+        .single();
+      
+      if (!existing) {
+        await supabase
+          .from('playground_participants')
+          .insert({
+            room_id: roomId,
+            wallet_address: publicKey.toBase58(),
+            score: 0
+          });
+      }
+    };
+    joinParticipant();
 
     // Setup Supabase Presence
     if (!roomId || !publicKey) return;
@@ -77,6 +127,8 @@ export default function PlaygroundRoom() {
           await channel.track({
             online_at: new Date().toISOString(),
             name: displayName,
+            passed: 0,
+            total: questionData?.testCases?.length || 0
           });
         }
       });
@@ -118,13 +170,41 @@ export default function PlaygroundRoom() {
   }, [isNearEnd, timeRemaining]);
 
   const handleRun = async () => {
+    if (!questionData?.testCases) {
+      toast.error("Question data not loaded yet.");
+      return;
+    }
     setIsRunning(true);
     try {
-      const result = await executeCode(language, code);
-      if (result.compile && result.compile.code !== 0) {
-        toast.error("Compilation Error: " + result.compile.stderr);
+      const results = await validateTestCases(language, code, questionData.testCases);
+      setTestResults(results);
+      
+      if (results.error) {
+        toast.error(`${results.error}: ${results.details || ""}`);
       } else {
-        toast.success("Output: " + result.run.stdout);
+        toast.success(`Passed ${results.passed}/${results.total} test cases!`);
+        
+        // Update database for persistence
+        if (publicKey && roomId) {
+          await supabase
+            .from('playground_participants')
+            .update({
+              test_cases_passed: results.passed,
+              total_test_cases: results.total,
+              test_results: results.results
+            })
+            .eq('room_id', roomId)
+            .eq('wallet_address', publicKey.toBase58());
+        }
+
+        // Update presence for real-time standings
+        const channel = supabase.channel(`room:${roomId}`);
+        await channel.track({
+          online_at: new Date().toISOString(),
+          name: displayName,
+          passed: results.passed,
+          total: results.total
+        });
       }
     } catch (e: any) {
       toast.error(e.message);
@@ -134,9 +214,32 @@ export default function PlaygroundRoom() {
   };
 
   const handleSubmit = async () => {
-    // Implement submission to test against test cases
-    toast.info("Submitting code to run against hidden test cases...");
-    // Update participant score/penalty logic here
+    if (!testResults) {
+      toast.error("Please run your code first.");
+      return;
+    }
+    
+    setIsRunning(true);
+    try {
+      if (publicKey && roomId) {
+        const { error } = await supabase
+          .from('playground_participants')
+          .update({
+            code_submission: code,
+            language: language,
+            score: testResults.passed * 10 - (testResults.total - testResults.passed) * 2 // Sample scoring logic
+          })
+          .eq('room_id', roomId)
+          .eq('wallet_address', publicKey.toBase58());
+        
+        if (error) throw error;
+        toast.success("Code submitted successfully!");
+      }
+    } catch (e: any) {
+      toast.error(e.message);
+    } finally {
+      setIsRunning(false);
+    }
   };
 
   const handleStartChallenge = async () => {
@@ -157,6 +260,28 @@ export default function PlaygroundRoom() {
 
   if (roomData.status === 'waiting') {
     const isHost = publicKey?.toBase58() === roomData.host_address;
+    
+    if (!publicKey) {
+      return (
+        <div className="flex flex-col items-center justify-center h-screen bg-background p-6">
+          <Card className="w-full max-w-md shadow-2xl border-primary/20 text-center">
+            <CardHeader>
+              <CardTitle className="text-2xl font-display">Connect Your Wallet</CardTitle>
+              <CardDescription>
+                You need to connect your Solana wallet to join this coding challenge.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="flex justify-center pb-8">
+              {/* The wallet button is usually in the layout, but we can put a prompt here */}
+              <div className="p-4 bg-muted rounded-lg border border-dashed border-primary/40 animate-pulse">
+                Click the "Connect Wallet" button in the top right to enter the arena.
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      );
+    }
+
     return (
       <div className="flex flex-col items-center justify-center h-screen bg-background p-6">
         <Card className="w-full max-w-lg shadow-2xl border-primary/20">
@@ -261,10 +386,13 @@ export default function PlaygroundRoom() {
           
           <ResizablePanel defaultSize={40} minSize={30}>
             <div className="h-full overflow-y-auto p-6">
-              <h2 className="text-2xl font-bold mb-4">Problem Description</h2>
+              <h2 className="text-2xl font-bold mb-4">{questionData?.title || "Loading Problem..."}</h2>
               <div className="prose dark:prose-invert max-w-none">
-                <p>Problem description will be fetched from GitHub URL: {roomData.question_repo_url}</p>
-                {/* Render Markdown here */}
+                {questionData?.description ? (
+                  <div dangerouslySetInnerHTML={{ __html: questionData.description.replace(/\n/g, '<br/>') }} />
+                ) : (
+                  <p className="text-muted-foreground italic">Problem description is being fetched...</p>
+                )}
               </div>
             </div>
           </ResizablePanel>
@@ -274,7 +402,10 @@ export default function PlaygroundRoom() {
           <ResizablePanel defaultSize={60}>
             <div className="flex flex-col h-full border-l">
               <div className="flex items-center justify-between px-4 py-2 bg-muted/50 border-b">
-                <Select value={language} onValueChange={setLanguage}>
+                <Select value={language} onValueChange={(val) => {
+                  setLanguage(val);
+                  setCode(CODE_TEMPLATES[val] || "// Write your code here");
+                }}>
                   <SelectTrigger className="w-[180px]">
                     <SelectValue placeholder="Language" />
                   </SelectTrigger>
@@ -316,6 +447,42 @@ export default function PlaygroundRoom() {
           </ResizablePanel>
 
         </ResizablePanelGroup>
+      </div>
+
+      {/* Live Standings Sidebar Overlay */}
+      <div className="fixed bottom-6 right-6 w-72 bg-card/95 backdrop-blur-sm border shadow-2xl rounded-2xl overflow-hidden animate-in slide-in-from-right-10">
+        <div className="bg-primary/10 px-4 py-3 border-b flex items-center justify-between">
+          <h3 className="font-bold text-sm flex items-center gap-2">
+            <Users className="w-4 h-4 text-primary" />
+            Live Standings
+          </h3>
+          <span className="text-[10px] bg-background px-1.5 py-0.5 rounded border font-mono">
+            {participants.length} LIVE
+          </span>
+        </div>
+        <div className="p-2 space-y-1 max-h-[300px] overflow-y-auto">
+          {participants.sort((a,b) => (b.passed || 0) - (a.passed || 0)).map((p, i) => (
+            <div key={i} className={`flex items-center gap-2 p-2 rounded-lg text-xs ${p.wallet === publicKey?.toBase58() ? "bg-primary/5 border border-primary/20" : ""}`}>
+              <div className="w-6 h-6 rounded-full bg-muted flex items-center justify-center text-[10px] font-bold">
+                {i + 1}
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="font-medium truncate">{p.name || "Coder"}</p>
+                <div className="flex items-center gap-2 mt-0.5">
+                  <div className="flex-1 h-1 bg-muted rounded-full overflow-hidden">
+                    <div 
+                      className="h-full bg-primary transition-all duration-500" 
+                      style={{ width: `${((p.passed || 0) / (p.total || 1)) * 100}%` }}
+                    />
+                  </div>
+                  <span className="text-[9px] text-muted-foreground whitespace-nowrap">
+                    {p.passed || 0}/{p.total || 0}
+                  </span>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   );

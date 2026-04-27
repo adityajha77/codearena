@@ -23,6 +23,9 @@ CREATE TABLE IF NOT EXISTS playground_participants (
     wallet_address TEXT NOT NULL,
     score INTEGER DEFAULT 0,
     penalties INTEGER DEFAULT 0,
+    test_cases_passed INTEGER DEFAULT 0,
+    total_test_cases INTEGER DEFAULT 0,
+    test_results JSONB DEFAULT '[]',
     code_submission TEXT, -- Final code submitted
     language TEXT,
     joined_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),

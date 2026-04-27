@@ -1,54 +1,41 @@
 export interface ExecutionResult {
-  run: {
-    stdout: string;
-    stderr: string;
-    code: number;
-    signal: string | null;
-    output: string;
-  };
-  compile?: {
-    stdout: string;
-    stderr: string;
-    code: number;
-    signal: string | null;
-    output: string;
-  };
+  success: boolean;
+  output: string;
+  error?: string;
+  status?: string;
 }
 
-const LANGUAGE_MAP: Record<string, { language: string; version: string }> = {
-  javascript: { language: 'javascript', version: '18.15.0' },
-  python: { language: 'python', version: '3.10.0' },
-  cpp: { language: 'c++', version: '10.2.0' },
-  java: { language: 'java', version: '15.0.2' },
-  c: { language: 'c', version: '10.2.0' },
+// Judge0 Language IDs
+const LANGUAGE_MAP: Record<string, number> = {
+  javascript: 63, // Node.js
+  python: 71,     // Python 3
+  cpp: 54,        // C++ (GCC 9.2.0)
+  java: 62,       // Java (OpenJDK 13.0.1)
+  c: 50,          // C (GCC 9.2.0)
 };
 
 /**
- * Execute code using the Piston execution API.
+ * Execute code using the Judge0 execution API.
  */
 export async function executeCode(
   languageId: string,
   sourceCode: string,
   stdin: string = ''
 ): Promise<ExecutionResult> {
-  const mapping = LANGUAGE_MAP[languageId];
-  if (!mapping) {
-    throw new Error(`Language ${languageId} is not supported by Piston API mapping.`);
+  const judge0Id = LANGUAGE_MAP[languageId];
+  if (!judge0Id) {
+    throw new Error(`Language ${languageId} is not supported by Judge0 API mapping.`);
   }
 
-  const response = await fetch('https://emkc.org/api/v2/piston/execute', {
+  // We use ?wait=true to get the result synchronously
+  const response = await fetch(`https://ce.judge0.com/submissions/?base64_encoded=false&wait=true`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      language: mapping.language,
-      version: mapping.version,
-      files: [
-        {
-          content: sourceCode,
-        },
-      ],
+      language_id: judge0Id,
+      source_code: sourceCode,
       stdin: stdin,
     }),
   });
@@ -57,7 +44,17 @@ export async function executeCode(
     throw new Error('Failed to execute code: ' + response.statusText);
   }
 
-  return response.json();
+  const result = await response.json();
+  
+  // Judge0 returns various status codes. ID 3 is 'Accepted' (Success)
+  const isSuccess = result.status?.id === 3;
+  
+  return {
+    success: isSuccess,
+    output: result.stdout || result.stderr || result.compile_output || "",
+    status: result.status?.description,
+    error: isSuccess ? undefined : (result.stderr || result.compile_output || result.status?.description)
+  };
 }
 
 /**
@@ -75,19 +72,19 @@ export async function validateTestCases(
     try {
       const result = await executeCode(languageId, sourceCode, testCase.input);
       
-      if (result.compile?.code !== 0 && result.compile?.code !== undefined) {
+      if (!result.success && result.status !== "Wrong Answer") {
         return {
           success: false,
-          error: 'Compilation Error',
-          details: result.compile.stderr,
-          passed: 0,
+          error: result.status || 'Execution Error',
+          details: result.error,
+          passed: passedCount,
           total: testCases.length,
-          results: [],
+          results: results,
         };
       }
 
-      const output = result.run.output.trim();
-      const expected = testCase.expectedOutput.trim();
+      const output = (result.output || "").trim();
+      const expected = (testCase.expectedOutput || "").trim();
       const isCorrect = output === expected;
 
       if (isCorrect) passedCount++;
@@ -99,6 +96,7 @@ export async function validateTestCases(
         passed: isCorrect,
       });
     } catch (error: any) {
+      console.error("Execution failed for test case", testCase, error);
       return {
         success: false,
         error: error.message || 'Execution failed',

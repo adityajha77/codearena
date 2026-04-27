@@ -61,7 +61,7 @@ export default function Playground() {
           host_address: publicKey.toBase58(),
           difficulty,
           question_title: "Pending Selection", // Placeholder, ideally fetch from GitHub here
-          question_repo_url: "https://raw.githubusercontent.com/adityajha77/codearena/main/sample-question.json", // Sample
+          question_repo_url: "sample_challenge.json", // Filename in your 'challenges' bucket
           question_tags: tags.split(",").map(t => t.trim()).filter(Boolean),
           start_time: mode === "schedule" ? new Date(scheduleTime).toISOString() : null,
           duration_minutes: parseInt(duration),
@@ -72,7 +72,17 @@ export default function Playground() {
 
       if (error) throw error;
 
-      toast.success("Room scheduled successfully!");
+      toast.success("Room created successfully!");
+
+      // Add host as participant
+      await supabase
+        .from('playground_participants')
+        .insert({
+          room_id: data.id,
+          wallet_address: publicKey.toBase58(),
+          score: 0
+        });
+
       navigate(`/playground/${data.id}`);
 
     } catch (error: any) {
