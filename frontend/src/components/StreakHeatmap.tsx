@@ -72,7 +72,7 @@ const StreakHeatmap = ({ weeks = 52, activityMap = {}, isRandom = false }: { wee
                 <div 
                     key={i} 
                     className="absolute"
-                    style={{ left: `${m.colIndex * 15}px` }} // 12px width + 3px gap = 15px per col
+                    style={{ left: `${m.colIndex * 17}px` }} // 14px width + 3px gap = 17px per col
                 >
                     {m.label}
                 </div>
@@ -82,7 +82,7 @@ const StreakHeatmap = ({ weeks = 52, activityMap = {}, isRandom = false }: { wee
         {/* Heatmap Grid */}
         <div className="flex gap-[3px]">
           {Array.from({ length: weeks }, (_, w) => (
-            <div key={w} className="flex flex-col gap-[3px] w-[12px]">
+            <div key={w} className="flex flex-col gap-[3px] w-[14px]">
               {Array.from({ length: 7 }, (_, d) => {
                 const dayData = heatmapData[w * 7 + d];
                 if (!dayData) return null;
@@ -99,7 +99,7 @@ const StreakHeatmap = ({ weeks = 52, activityMap = {}, isRandom = false }: { wee
                     whileInView={{ opacity: 1, scale: 1 }}
                     viewport={{ once: true }}
                     transition={{ delay: (w * 7 + d) * 0.001, duration: 0.1 }}
-                    className={`w-3 h-3 rounded-sm ${getGreenColor(dayData.val)} hover:ring-1 hover:ring-foreground/50 transition-all cursor-pointer`}
+                    className={`w-3.5 h-3.5 rounded-sm ${getGreenColor(dayData.val)} hover:ring-1 hover:ring-foreground/50 transition-all cursor-pointer`}
                     title={titleStr}
                   />
                 );
@@ -110,11 +110,11 @@ const StreakHeatmap = ({ weeks = 52, activityMap = {}, isRandom = false }: { wee
       </div>
       <div className="flex justify-end items-center gap-2 mt-4 text-xs text-muted-foreground">
         <span>Less</span>
-        <div className="w-3 h-3 rounded-sm bg-muted/30" />
-        <div className="w-3 h-3 rounded-sm bg-[#0e4429]" />
-        <div className="w-3 h-3 rounded-sm bg-[#006d32]" />
-        <div className="w-3 h-3 rounded-sm bg-[#26a641]" />
-        <div className="w-3 h-3 rounded-sm bg-[#39d353]" />
+        <div className="w-3.5 h-3.5 rounded-sm bg-muted/30" />
+        <div className="w-3.5 h-3.5 rounded-sm bg-[#0e4429]" />
+        <div className="w-3.5 h-3.5 rounded-sm bg-[#006d32]" />
+        <div className="w-3.5 h-3.5 rounded-sm bg-[#26a641]" />
+        <div className="w-3.5 h-3.5 rounded-sm bg-[#39d353]" />
         <span>More</span>
       </div>
     </div>

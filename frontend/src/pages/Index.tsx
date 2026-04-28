@@ -360,19 +360,11 @@ const Index = () => {
             </div>
           </ScrollReveal>
           <ScrollReveal>
-            <div className="glass-card rounded-2xl p-6 max-w-3xl mx-auto">
+            <div className="glass-card rounded-2xl p-6 max-w-5xl mx-auto">
               <div className="flex items-center justify-between mb-4">
-                <span className="text-sm font-mono text-muted-foreground">contributions in the last 20 weeks</span>
-                <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                  Less
-                  <span className="w-3 h-3 rounded-sm bg-muted/30" />
-                  <span className="w-3 h-3 rounded-sm bg-primary/30" />
-                  <span className="w-3 h-3 rounded-sm bg-primary/60" />
-                  <span className="w-3 h-3 rounded-sm bg-primary/90" />
-                  More
-                </div>
+                <span className="text-sm font-mono text-muted-foreground">contributions in the last year</span>
               </div>
-              <StreakHeatmap weeks={20} isRandom />
+              <StreakHeatmap weeks={52} isRandom />
             </div>
           </ScrollReveal>
         </div>
