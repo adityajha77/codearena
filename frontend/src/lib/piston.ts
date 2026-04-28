@@ -15,6 +15,35 @@ const LANGUAGE_MAP: Record<string, number> = {
 };
 
 /**
+ * Helper to encode string to base64 with UTF-8 support for Judge0.
+ */
+function toBase64(str: string): string {
+  try {
+    return btoa(encodeURIComponent(str).replace(/%([0-9A-F]{2})/g, (match, p1) => {
+      return String.fromCharCode(parseInt(p1, 16));
+    }));
+  } catch (e) {
+    console.error("Base64 encoding failed", e);
+    return btoa(str); // Fallback for simple strings
+  }
+}
+
+/**
+ * Helper to decode base64 to string with UTF-8 support
+ */
+function fromBase64(str: string | null): string {
+  if (!str) return "";
+  try {
+    return decodeURIComponent(atob(str).split('').map((c) => {
+      return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
+    }).join(''));
+  } catch (e) {
+    console.error("Base64 decoding failed", e);
+    return atob(str);
+  }
+}
+
+/**
  * Execute code using the Judge0 execution API.
  */
 export async function executeCode(
@@ -27,16 +56,16 @@ export async function executeCode(
     throw new Error(`Language ${languageId} is not supported by Judge0 API mapping.`);
   }
 
-  // We use ?wait=true to get the result synchronously
-  const response = await fetch(`https://ce.judge0.com/submissions/?base64_encoded=false&wait=true`, {
+  // We use ?wait=true to get the result synchronously and base64_encoded=true for robustness
+  const response = await fetch(`https://ce.judge0.com/submissions/?base64_encoded=true&wait=true`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
       language_id: judge0Id,
-      source_code: sourceCode,
-      stdin: stdin,
+      source_code: toBase64(sourceCode),
+      stdin: toBase64(stdin),
     }),
   });
 
@@ -46,14 +75,19 @@ export async function executeCode(
 
   const result = await response.json();
   
+  // Since we sent base64_encoded=true, the output fields are also base64 encoded
+  const stdout = fromBase64(result.stdout);
+  const stderr = fromBase64(result.stderr);
+  const compile_output = fromBase64(result.compile_output);
+
   // Judge0 returns various status codes. ID 3 is 'Accepted' (Success)
   const isSuccess = result.status?.id === 3;
   
   return {
     success: isSuccess,
-    output: result.stdout || result.stderr || result.compile_output || "",
+    output: stdout || stderr || compile_output || "",
     status: result.status?.description,
-    error: isSuccess ? undefined : (result.stderr || result.compile_output || result.status?.description)
+    error: isSuccess ? undefined : (stderr || compile_output || result.status?.description)
   };
 }
 

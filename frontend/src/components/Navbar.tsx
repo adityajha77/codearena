@@ -32,7 +32,7 @@ const Navbar = () => {
       const { count } = await supabase
         .from('notifications')
         .select('*', { count: 'exact', head: true })
-        .ilike('recipient_wallet', walletAddress)
+        .eq('recipient_wallet', walletAddress)
         .eq('is_read', false);
       
       setUnreadCount(count || 0);

@@ -40,7 +40,7 @@ const Notifications = () => {
     const { data: notifs, error } = await supabase
       .from('notifications')
       .select('*, challenges(*)')
-      .ilike('recipient_wallet', walletAddress)
+      .eq('recipient_wallet', walletAddress)
       .order('created_at', { ascending: false });
 
     if (error) {
