@@ -1,0 +1,226 @@
+[
+  {
+    "id": "bit_strings.json",
+    "title": "Bit Strings",
+    "tags": [
+      "Math"
+    ],
+    "difficulty": "Easy"
+  },
+  {
+    "id": "classic_binary_search.json",
+    "title": "Binary Search",
+    "tags": [
+      "Binary Search"
+    ],
+    "difficulty": "Easy"
+  },
+  {
+    "id": "coin_combinations_1.json",
+    "title": "Coin Combinations I",
+    "tags": [
+      "DP"
+    ],
+    "difficulty": "Medium"
+  },
+  {
+    "id": "container_with_most_water.json",
+    "title": "Container With Most Water",
+    "tags": [
+      "Algorithms",
+      "Two Pointers"
+    ],
+    "difficulty": "Medium"
+  },
+  {
+    "id": "dice_combinations.json",
+    "title": "Dice Combinations",
+    "tags": [
+      "DP"
+    ],
+    "difficulty": "Medium"
+  },
+  {
+    "id": "find_peak_element.json",
+    "title": "Find Peak Element",
+    "tags": [
+      "Binary Search"
+    ],
+    "difficulty": "Medium"
+  },
+  {
+    "id": "first_last_position.json",
+    "title": "First and Last Position of Element in Sorted Array",
+    "tags": [
+      "Binary Search"
+    ],
+    "difficulty": "Medium"
+  },
+  {
+    "id": "grid_paths.json",
+    "title": "Grid Paths",
+    "tags": [
+      "DP"
+    ],
+    "difficulty": "Medium"
+  },
+  {
+    "id": "implement_queue_stacks.json",
+    "title": "Implement Queue using Stacks",
+    "tags": [
+      "Data Structures",
+      "Stack",
+      "Queue"
+    ],
+    "difficulty": "Easy"
+  },
+  {
+    "id": "kth_largest_element.json",
+    "title": "Kth Largest Element in an Array",
+    "tags": [
+      "Data Structures",
+      "Heap",
+      "Sorting"
+    ],
+    "difficulty": "Medium"
+  },
+  {
+    "id": "lru_cache.json",
+    "title": "LRU Cache (Simplified)",
+    "tags": [
+      "Data Structures",
+      "Hash Table",
+      "Linked List"
+    ],
+    "difficulty": "Hard"
+  },
+  {
+    "id": "maximum_subarray.json",
+    "title": "Maximum Subarray",
+    "tags": [
+      "Algorithms",
+      "DP"
+    ],
+    "difficulty": "Easy"
+  },
+  {
+    "id": "merge_sorted_array.json",
+    "title": "Merge Sorted Array",
+    "tags": [
+      "Algorithms",
+      "Two Pointers"
+    ],
+    "difficulty": "Easy"
+  },
+  {
+    "id": "minimizing_coins.json",
+    "title": "Minimizing Coins",
+    "tags": [
+      "DP"
+    ],
+    "difficulty": "Medium"
+  },
+  {
+    "id": "missing_number.json",
+    "title": "Missing Number",
+    "tags": [
+      "Math"
+    ],
+    "difficulty": "Easy"
+  },
+  {
+    "id": "number_spiral.json",
+    "title": "Number Spiral",
+    "tags": [
+      "Math"
+    ],
+    "difficulty": "Medium"
+  },
+  {
+    "id": "removing_digits.json",
+    "title": "Removing Digits",
+    "tags": [
+      "DP"
+    ],
+    "difficulty": "Easy"
+  },
+  {
+    "id": "reverse_linked_list.json",
+    "title": "Reverse Linked List",
+    "tags": [
+      "Data Structures",
+      "Linked List"
+    ],
+    "difficulty": "Easy"
+  },
+  {
+    "id": "search_2d_matrix.json",
+    "title": "Search a 2D Matrix",
+    "tags": [
+      "Binary Search",
+      "Matrix"
+    ],
+    "difficulty": "Medium"
+  },
+  {
+    "id": "search_rotated_array.json",
+    "title": "Search in Rotated Sorted Array",
+    "tags": [
+      "Binary Search"
+    ],
+    "difficulty": "Medium"
+  },
+  {
+    "id": "two_knights.json",
+    "title": "Two Knights",
+    "tags": [
+      "Math",
+      "Combinatorics"
+    ],
+    "difficulty": "Medium"
+  },
+  {
+    "id": "two_sets.json",
+    "title": "Two Sets",
+    "tags": [
+      "Math"
+    ],
+    "difficulty": "Medium"
+  },
+  {
+    "id": "two_sum.json",
+    "title": "Two Sum",
+    "tags": [
+      "Algorithms",
+      "Hash Table"
+    ],
+    "difficulty": "Easy"
+  },
+  {
+    "id": "valid_anagram.json",
+    "title": "Valid Anagram",
+    "tags": [
+      "Algorithms",
+      "String"
+    ],
+    "difficulty": "Easy"
+  },
+  {
+    "id": "valid_parentheses.json",
+    "title": "Valid Parentheses",
+    "tags": [
+      "Data Structures",
+      "Stack"
+    ],
+    "difficulty": "Easy"
+  },
+  {
+    "id": "weird_algorithm.json",
+    "title": "Weird Algorithm",
+    "tags": [
+      "Math",
+      "Simulation"
+    ],
+    "difficulty": "Easy"
+  }
+]

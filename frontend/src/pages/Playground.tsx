@@ -9,7 +9,9 @@ import { useWallet } from "@solana/wallet-adapter-react";
 import { toast } from "sonner";
 import { createClient } from "@supabase/supabase-js";
 import { addHours, isAfter, isBefore } from "date-fns";
-import { ArrowLeft, Home, Trophy } from "lucide-react";
+import { ArrowLeft, Home, Trophy, BookOpen, Code2, Check, Dice5 } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
+import challengesMetadata from "../data/challenges_metadata.json";
 
 // Ensure you have configured supabaseClient properly in your project
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
@@ -22,6 +24,8 @@ export default function Playground() {
   const [difficulty, setDifficulty] = useState("Easy");
   const [duration, setDuration] = useState("30");
   const [roomName, setRoomName] = useState("");
+  const [selectedTopics, setSelectedTopics] = useState<string[]>([]);
+  const [questionCount, setQuestionCount] = useState("1");
   const [tags, setTags] = useState("");
   const [mode, setMode] = useState<"now" | "schedule">("now");
   const [scheduleTime, setScheduleTime] = useState("");
@@ -57,27 +61,30 @@ export default function Playground() {
       return;
     }
 
-    if (mode === "schedule") {
-      if (!scheduleTime) {
-        toast.error("Please select a schedule time.");
-        return;
-      }
-      const startTime = new Date(scheduleTime);
-      const now = new Date();
-      const maxTime = addHours(now, 48);
-
-      if (isBefore(startTime, now)) {
-        toast.error("Schedule time cannot be in the past.");
-        return;
-      }
-      if (isAfter(startTime, maxTime)) {
-        toast.error("You can only schedule up to 48 hours in advance.");
-        return;
-      }
-    }
-
     if (!roomName.trim()) {
       toast.error("Please enter a contest name");
+      return;
+    }
+
+    // Randomization Logic
+    const count = parseInt(questionCount);
+    let pool = challengesMetadata.filter(q => q.difficulty === difficulty);
+    
+    if (selectedTopics.length > 0) {
+      pool = pool.filter(q => q.tags.some(t => selectedTopics.includes(t)));
+    }
+
+    if (pool.length === 0) {
+      toast.error(`No ${difficulty} questions found for the selected topics.`);
+      return;
+    }
+
+    // Shuffle and pick
+    const shuffled = [...pool].sort(() => 0.5 - Math.random());
+    const finalQuestions = shuffled.slice(0, Math.min(count, pool.length));
+    
+    if (finalQuestions.length === 0) {
+      toast.error("Could not find any matching questions.");
       return;
     }
 
@@ -91,9 +98,10 @@ export default function Playground() {
           host_address: publicKey.toBase58(),
           room_name: roomName,
           difficulty,
-          question_title: "Pending Selection", // Placeholder, ideally fetch from GitHub here
-          question_repo_url: "sample_challenge.json", // Filename in your 'challenges' bucket
-          question_tags: tags.split(",").map(t => t.trim()).filter(Boolean),
+          question_title: finalQuestions.length === 1 ? finalQuestions[0].title : `${finalQuestions.length} Problems Challenge`,
+          question_repo_url: finalQuestions[0].id, // Backward compatibility for single question logic
+          question_tags: Array.from(new Set(finalQuestions.flatMap(q => q.tags))),
+          questions_list: finalQuestions, // New multi-question support
           start_time: mode === "schedule" ? new Date(scheduleTime).toISOString() : null,
           duration_minutes: parseInt(duration),
           status: mode === "schedule" ? 'scheduled' : 'waiting'
@@ -200,14 +208,56 @@ export default function Playground() {
               </Select>
             </div>
 
-            <div className="space-y-2">
-              <Label>Duration (Minutes)</Label>
-              <Input type="number" value={duration} onChange={(e) => setDuration(e.target.value)} min="5" max="180" />
+            <div className="space-y-4">
+              <Label className="text-sm font-bold uppercase tracking-wider text-muted-foreground">Topics (Select multiple)</Label>
+              <div className="grid grid-cols-2 gap-3">
+                {["Math", "Binary Search", "DP", "Algorithms", "Data Structures"].map((t) => (
+                  <div key={t} className="flex items-center space-x-3 p-3 rounded-xl border bg-muted/20 hover:bg-muted/40 transition-colors cursor-pointer" onClick={() => {
+                    setSelectedTopics(prev => prev.includes(t) ? prev.filter(x => x !== t) : [...prev, t]);
+                  }}>
+                    <Checkbox checked={selectedTopics.includes(t)} onCheckedChange={() => {}} />
+                    <span className="text-sm font-medium">{t === "DP" ? "Dynamic Programming" : t}</span>
+                  </div>
+                ))}
+              </div>
             </div>
 
-            <div className="space-y-2">
-              <Label>Tags (comma separated)</Label>
-              <Input placeholder="e.g. DP, Binary Search, Trees" value={tags} onChange={(e) => setTags(e.target.value)} />
+            <div className="grid grid-cols-2 gap-4 pt-2">
+              <div className="space-y-2">
+                <Label>Number of Questions</Label>
+                <div className="relative">
+                  <Input 
+                    type="number" 
+                    value={questionCount} 
+                    onChange={(e) => setQuestionCount(e.target.value)} 
+                    min="1" 
+                    max="5" 
+                    className="pl-9"
+                  />
+                  <Dice5 className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Duration (Min)</Label>
+                <Input type="number" value={duration} onChange={(e) => setDuration(e.target.value)} min="5" max="180" />
+              </div>
+            </div>
+
+            <div className="p-4 rounded-xl bg-primary/5 border border-primary/10 animate-in fade-in zoom-in-95">
+              <div className="flex items-center gap-3 mb-2">
+                <div className="p-2 rounded-lg bg-primary/10 text-primary">
+                  <BookOpen className="w-4 h-4" />
+                </div>
+                <div>
+                  <p className="text-xs font-bold uppercase tracking-widest text-primary/60">Challenge Mode</p>
+                  <p className="text-sm font-bold">Randomized {difficulty} Arena</p>
+                </div>
+              </div>
+              <p className="text-[11px] text-muted-foreground">
+                The arena will automatically select {questionCount} random {difficulty} questions 
+                {selectedTopics.length > 0 ? ` from: ${selectedTopics.join(", ")}` : " from all topics"}.
+              </p>
             </div>
 
             {mode === "schedule" && (

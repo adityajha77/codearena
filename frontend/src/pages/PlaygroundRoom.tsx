@@ -21,7 +21,8 @@ const supabase = createClient(supabaseUrl, supabaseKey);
 export default function PlaygroundRoom() {
   const { roomId } = useParams();
   const { publicKey } = useWallet();
-  const [code, setCode] = useState("// Write your code here");
+  const [activeQuestionIndex, setActiveQuestionIndex] = useState(0);
+  const [codes, setCodes] = useState<Record<number, string>>({});
   const [language, setLanguage] = useState("javascript");
 
   const CODE_TEMPLATES: Record<string, string> = {
@@ -44,8 +45,8 @@ export default function PlaygroundRoom() {
     roomData?.duration_minutes
   );
 
-  const [questionData, setQuestionData] = useState<any>(null);
-  const [testResults, setTestResults] = useState<any>(null);
+  const [questionDataList, setQuestionDataList] = useState<any[]>([]);
+  const [testResultsMap, setTestResultsMap] = useState<Record<number, any>>({});
   const [isStandingsOpen, setIsStandingsOpen] = useState(true);
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [activeTestTab, setActiveTestTab] = useState(0);
@@ -62,22 +63,36 @@ export default function PlaygroundRoom() {
       
       if (data) {
         setRoomData(data);
-        // Fetch question data from private storage
-        if (data.question_repo_url) {
+        
+        // Fetch all questions if questions_list exists
+        const questions = data.questions_list || (data.question_repo_url ? [{ 
+          id: data.question_repo_url, 
+          title: data.question_title, 
+          tags: data.question_tags 
+        }] : []);
+
+        const loadedQuestions: any[] = [];
+        for (const q of questions) {
           try {
-            const { data: fileData, error: downloadError } = await supabase
-              .storage
-              .from('challenges')
-              .download(data.question_repo_url);
-            
-            if (downloadError) throw downloadError;
-            
-            const text = await fileData.text();
-            setQuestionData(JSON.parse(text));
+            const response = await fetch(`/challenges/${q.id}`);
+            if (response.ok) {
+              loadedQuestions.push(await response.json());
+            } else {
+              // Try Supabase fallback
+              const { data: fileData, error: downloadError } = await supabase
+                .storage
+                .from('challenges')
+                .download(q.id);
+              if (!downloadError) {
+                const text = await fileData.text();
+                loadedQuestions.push(JSON.parse(text));
+              }
+            }
           } catch (e) {
-            console.error("Failed to fetch question data from storage", e);
+            console.error("Failed to fetch question data", e);
           }
         }
+        setQuestionDataList(loadedQuestions);
       }
     };
     fetchRoom();
@@ -147,12 +162,19 @@ export default function PlaygroundRoom() {
       if (!roomId || !publicKey) return;
       const { data } = await supabase
         .from('playground_participants')
-        .select('code_submission')
+        .select('submissions, multi_test_results, code_submission')
         .eq('room_id', roomId)
         .eq('wallet_address', publicKey.toBase58())
         .single();
-      if (data?.code_submission) {
-        setIsSubmitted(true);
+      
+      if (data) {
+        if (data.submissions) setCodes(data.submissions);
+        if (data.multi_test_results) setTestResultsMap(data.multi_test_results);
+        if (data.code_submission || (data.submissions && Object.keys(data.submissions).length > 0)) {
+          // In multi-mode, we don't necessarily want to "lock" everything immediately, 
+          // but we can set isSubmitted if appropriate.
+          // For now, let's keep it flexible.
+        }
       }
     };
 
@@ -285,14 +307,17 @@ export default function PlaygroundRoom() {
   }, [isNearEnd, timeRemaining]);
 
   const handleRun = async () => {
-    if (!questionData?.testCases) {
+    const currentQuestion = questionDataList[activeQuestionIndex];
+    const currentCode = codes[activeQuestionIndex] || CODE_TEMPLATES[language] || "// Write your code here";
+
+    if (!currentQuestion?.testCases) {
       toast.error("Question data not loaded yet.");
       return;
     }
     setIsRunning(true);
     try {
-      const results = await validateTestCases(language, code, questionData.testCases);
-      setTestResults(results);
+      const results = await validateTestCases(language, currentCode, currentQuestion.testCases);
+      setTestResultsMap(prev => ({ ...prev, [activeQuestionIndex]: results }));
       
       if (results.error) {
         toast.error(`${results.error}: ${results.details || ""}`);
@@ -307,7 +332,8 @@ export default function PlaygroundRoom() {
   };
 
   const handleSubmit = async () => {
-    if (!testResults) {
+    const results = testResultsMap[activeQuestionIndex];
+    if (!results) {
       toast.error("Please run your code first.");
       return;
     }
@@ -315,19 +341,26 @@ export default function PlaygroundRoom() {
     setIsRunning(true);
     try {
       if (publicKey && roomId) {
+        // Calculate total score across all questions
+        const newResultsMap = { ...testResultsMap };
+        const totalScore = Object.values(newResultsMap).reduce((acc: number, res: any) => {
+          return acc + (res.passed * 10 - (res.total - res.passed) * 2);
+        }, 0);
+
         const { error } = await supabase
           .from('playground_participants')
           .update({
-            code_submission: code,
-            language: language,
-            score: testResults.passed * 10 - (testResults.total - testResults.passed) * 2
+            submissions: codes,
+            multi_test_results: newResultsMap,
+            score: totalScore
           })
           .eq('room_id', roomId)
           .eq('wallet_address', publicKey.toBase58());
         
         if (error) throw error;
-        setIsSubmitted(true);
-        toast.success("Code submitted! Results will be declared soon.");
+        // Only mark as fully submitted if it's the last question or user wants to end?
+        // Actually, let's just allow partial submissions.
+        toast.success("Progress saved!");
       }
     } catch (e: any) {
       toast.error(e.message);
@@ -599,14 +632,34 @@ export default function PlaygroundRoom() {
         <ResizablePanelGroup direction="horizontal">
           
           <ResizablePanel defaultSize={35} minSize={25}>
-            <div className="h-full overflow-y-auto p-6">
-              <h2 className="text-2xl font-bold mb-4">{questionData?.title || "Loading Problem..."}</h2>
-              <div className="prose dark:prose-invert max-w-none">
-                {questionData?.description ? (
-                  <div dangerouslySetInnerHTML={{ __html: questionData.description.replace(/\n/g, '<br/>') }} />
-                ) : (
-                  <p className="text-muted-foreground italic">Problem description is being fetched...</p>
-                )}
+            <div className="flex flex-col h-full bg-card/30">
+              <div className="flex gap-1 p-2 bg-muted/50 border-b overflow-x-auto">
+                {questionDataList.map((q, i) => (
+                  <button
+                    key={i}
+                    onClick={() => {
+                      setActiveQuestionIndex(i);
+                      setActiveTestTab(0);
+                    }}
+                    className={`px-3 py-1.5 rounded-md text-[10px] font-bold uppercase tracking-wider transition-all whitespace-nowrap ${
+                      activeQuestionIndex === i 
+                      ? "bg-primary text-primary-foreground shadow-lg" 
+                      : "text-muted-foreground hover:bg-muted"
+                    }`}
+                  >
+                    Problem {i + 1}
+                  </button>
+                ))}
+              </div>
+              <div className="flex-1 overflow-y-auto p-6">
+                <h2 className="text-2xl font-bold mb-4">{questionDataList[activeQuestionIndex]?.title || "Loading Problem..."}</h2>
+                <div className="prose dark:prose-invert max-w-none">
+                  {questionDataList[activeQuestionIndex]?.description ? (
+                    <div dangerouslySetInnerHTML={{ __html: questionDataList[activeQuestionIndex].description.replace(/\n/g, '<br/>') }} />
+                  ) : (
+                    <p className="text-muted-foreground italic">Problem description is being fetched...</p>
+                  )}
+                </div>
               </div>
             </div>
           </ResizablePanel>
@@ -618,7 +671,10 @@ export default function PlaygroundRoom() {
               <div className="flex items-center justify-between px-4 py-2 bg-muted/50 border-b">
                 <Select value={language} onValueChange={(val) => {
                   setLanguage(val);
-                  setCode(CODE_TEMPLATES[val] || "// Write your code here");
+                  setCodes(prev => ({ 
+                    ...prev, 
+                    [activeQuestionIndex]: CODE_TEMPLATES[val] || "// Write your code here" 
+                  }));
                 }}>
                   <SelectTrigger className="w-[180px]">
                     <SelectValue placeholder="Language" />
@@ -633,11 +689,11 @@ export default function PlaygroundRoom() {
                 </Select>
                 
                 <div className="flex gap-2">
-                  <Button variant="secondary" size="sm" onClick={handleRun} disabled={isRunning || isSubmitted || currentPhase === 'finished'}>
+                  <Button variant="secondary" size="sm" onClick={handleRun} disabled={isRunning || isSubmitted || (currentPhase as string) === 'finished'}>
                     <Play className="w-4 h-4 mr-2" />
                     Run
                   </Button>
-                  <Button size="sm" onClick={handleSubmit} disabled={isRunning || isSubmitted || currentPhase === 'finished'}>
+                  <Button size="sm" onClick={handleSubmit} disabled={isRunning || isSubmitted || (currentPhase as string) === 'finished'}>
                     <Upload className="w-4 h-4 mr-2" />
                     Submit
                   </Button>
@@ -651,12 +707,12 @@ export default function PlaygroundRoom() {
                       height="100%"
                       language={language}
                       theme="vs-dark"
-                      value={code}
-                      onChange={(val) => setCode(val || "")}
+                      value={codes[activeQuestionIndex] || CODE_TEMPLATES[language] || "// Write your code here"}
+                      onChange={(val) => setCodes(prev => ({ ...prev, [activeQuestionIndex]: val || "" }))}
                       options={{
                         minimap: { enabled: false },
                         fontSize: 14,
-                        readOnly: isSubmitted || currentPhase === 'finished'
+                        readOnly: isSubmitted || (currentPhase as string) === 'finished'
                       }}
                     />
                   </ResizablePanel>
@@ -665,32 +721,32 @@ export default function PlaygroundRoom() {
                     <div className="h-full bg-background flex flex-col overflow-hidden">
                       <div className="px-4 py-2 bg-muted/30 border-b flex items-center justify-between">
                          <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Test Results</span>
-                         {testResults && (
+                         {testResultsMap[activeQuestionIndex] && (
                            <div className="flex gap-3 items-center">
-                             <span className="text-[10px] font-bold text-green-500 uppercase tracking-tight">Passed: {testResults.passed}</span>
-                             <span className="text-[10px] font-bold text-red-500 uppercase tracking-tight">Failed: {testResults.total - testResults.passed}</span>
+                             <span className="text-[10px] font-bold text-green-500 uppercase tracking-tight">Passed: {testResultsMap[activeQuestionIndex].passed}</span>
+                             <span className="text-[10px] font-bold text-red-500 uppercase tracking-tight">Failed: {testResultsMap[activeQuestionIndex].total - testResultsMap[activeQuestionIndex].passed}</span>
                            </div>
                          )}
                       </div>
                       <div className="flex-1 overflow-y-auto p-4">
-                        {!testResults ? (
+                        {!testResultsMap[activeQuestionIndex] ? (
                           <div className="h-full flex items-center justify-center text-muted-foreground text-sm italic">
-                            Run your code to see test results here.
+                            Run your code for Problem {activeQuestionIndex + 1} to see results.
                           </div>
                         ) : (
                           <div className="space-y-4">
-                            {testResults.error && (
+                            {testResultsMap[activeQuestionIndex].error && (
                               <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-lg animate-in fade-in slide-in-from-top-2">
                                 <p className="text-xs font-bold text-red-500 mb-1 flex items-center gap-2">
                                    <div className="w-1.5 h-1.5 rounded-full bg-red-500" />
-                                   {testResults.error}
+                                   {testResultsMap[activeQuestionIndex].error}
                                 </p>
-                                <pre className="text-[10px] font-mono text-red-400/80 break-all whitespace-pre-wrap">{testResults.details}</pre>
+                                <pre className="text-[10px] font-mono text-red-400/80 break-all whitespace-pre-wrap">{testResultsMap[activeQuestionIndex].details}</pre>
                               </div>
                             )}
 
                             <div className="flex gap-2 border-b pb-2 overflow-x-auto">
-                              {testResults.results?.map((_: any, i: number) => (
+                              {testResultsMap[activeQuestionIndex].results?.map((_: any, i: number) => (
                                 <button
                                   key={i}
                                   onClick={() => setActiveTestTab(i)}
@@ -706,28 +762,28 @@ export default function PlaygroundRoom() {
                               ))}
                             </div>
                             
-                            {testResults.results?.[activeTestTab] && (
+                            {testResultsMap[activeQuestionIndex].results?.[activeTestTab] && (
                               <div className="space-y-3 animate-in fade-in slide-in-from-bottom-2">
                                 <div className="flex items-center justify-between">
                                   <span className={`text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-widest ${
-                                    testResults.results[activeTestTab].passed ? "bg-green-500/20 text-green-500" : "bg-red-500/20 text-red-500"
+                                    testResultsMap[activeQuestionIndex].results[activeTestTab].passed ? "bg-green-500/20 text-green-500" : "bg-red-500/20 text-red-500"
                                   }`}>
-                                    {testResults.results[activeTestTab].passed ? "Accepted" : "Wrong Answer"}
+                                    {testResultsMap[activeQuestionIndex].results[activeTestTab].passed ? "Accepted" : "Wrong Answer"}
                                   </span>
                                 </div>
                                 <div>
                                   <label className="text-[10px] font-bold text-muted-foreground uppercase">Input</label>
-                                  <pre className="mt-1 p-2 bg-muted/50 rounded text-xs font-mono border">{testResults.results[activeTestTab].input}</pre>
+                                  <pre className="mt-1 p-2 bg-muted/50 rounded text-xs font-mono border">{testResultsMap[activeQuestionIndex].results[activeTestTab].input}</pre>
                                 </div>
                                 <div className="grid grid-cols-2 gap-4">
                                   <div>
                                     <label className="text-[10px] font-bold text-muted-foreground uppercase">Expected</label>
-                                    <pre className="mt-1 p-2 bg-muted/50 rounded text-xs font-mono border">{testResults.results[activeTestTab].expected}</pre>
+                                    <pre className="mt-1 p-2 bg-muted/50 rounded text-xs font-mono border">{testResultsMap[activeQuestionIndex].results[activeTestTab].expected}</pre>
                                   </div>
                                   <div>
                                     <label className="text-[10px] font-bold text-muted-foreground uppercase">Actual</label>
-                                    <pre className={`mt-1 p-2 rounded text-xs font-mono border ${testResults.results[activeTestTab].passed ? "bg-green-500/5 text-green-500 border-green-500/20" : "bg-red-500/5 text-red-500 border-red-500/20"}`}>
-                                      {testResults.results[activeTestTab].actual || <span className="italic opacity-50">Empty Output</span>}
+                                    <pre className={`mt-1 p-2 rounded text-xs font-mono border ${testResultsMap[activeQuestionIndex].results[activeTestTab].passed ? "bg-green-500/5 text-green-500 border-green-500/20" : "bg-red-500/5 text-red-500 border-red-500/20"}`}>
+                                      {testResultsMap[activeQuestionIndex].results[activeTestTab].actual || <span className="italic opacity-50">Empty Output</span>}
                                     </pre>
                                   </div>
                                 </div>

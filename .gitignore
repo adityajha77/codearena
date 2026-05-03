@@ -39,3 +39,7 @@ desktop.ini
 # Build outputs
 **/out
 **/build
+
+# Challenge Data (Sensitive Test Cases)
+challenges/
+frontend/public/challenges/
