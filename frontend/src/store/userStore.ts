@@ -62,17 +62,6 @@ export const useUserStore = create<UserState>()(
       }),
 
       setWalletAddress: (address) => set((state) => {
-        // If the address is actually changing (including to null)
-        if (address !== state.walletAddress) {
-           return { 
-             walletAddress: address,
-             githubHandle: null,
-             leetcodeHandle: null,
-             codeforcesHandle: null,
-             twitterHandle: null,
-             dailyActivity: {}
-           };
-        }
         return { walletAddress: address };
       }),
       setGithubHandle: (handle) => set({ githubHandle: handle }),
