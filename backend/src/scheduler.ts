@@ -9,91 +9,83 @@ dotenv.config();
 const bot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN!);
 
 export const startScheduler = () => {
-  console.log('⏰ Reminder scheduler started! (Checking every 15 mins)');
-  // Run every 15 minutes for high accuracy
-  cron.schedule('*/15 * * * *', () => {
-    console.log('Running scheduled reminder check...');
-    runReminderCheck();
+  console.log('⏰ [BOOT] Reminder scheduler started! (Checking every 15 mins)');
+  
+  // Run every 15 minutes
+  cron.schedule('*/15 * * * *', async () => {
+    const timestamp = new Date().toLocaleString();
+    try {
+      await runReminderCheck();
+    } catch (criticalErr: any) {
+      console.error(`❌ [CRITICAL] Scheduler loop crashed: ${criticalErr.message}`);
+    }
   });
 };
 
 export const runReminderCheck = async (force = false) => {
   const now = new Date();
-  
-  // Get all active participations that haven't been solved today
   const todayStr = now.toISOString().split('T')[0];
   
-  // Fetch participations joined with user profiles and challenge info
-  // Using explicit relationship names to avoid ambiguity
   const { data: participants, error } = await supabase
     .from('challenge_participants')
     .select(`
-      *,
-      challenges!fk_challenge (*),
+      id, wallet_address, last_slashed_date, strike_count, status,
+      challenges!fk_challenge (id, title, mode, creator_wallet, beneficiaries, created_at),
       user_profiles!fk_user_profile (telegram_chat_id)
     `)
+    .neq('status', 'Eliminated')
     .or(`last_solved_date.neq.${todayStr},last_solved_date.is.null`);
 
   if (error) {
-    console.error('Scheduler Query Error:', error);
+    console.error('   DB Error');
     return;
   }
 
-  if (!participants) return;
+  if (!participants || participants.length === 0) return;
 
-  console.log(`Checking reminders for ${participants.length} participants...`);
+  console.log(`⏰ [${new Date().toLocaleTimeString()}] Checking ${participants.length} users...`);
 
+  let slashCount = 0;
   for (const p of participants) {
-    if (!p.user_profiles?.telegram_chat_id) continue;
+    try {
+      const profiles = p.user_profiles as any;
+      const chatId = Array.isArray(profiles) ? profiles[0]?.telegram_chat_id : profiles?.telegram_chat_id;
 
-    // Calculate time remaining (assuming 24h daily window from challenge start for this demo)
-    // In a real app, this would be until 11:59 PM or 24h from last solve
-    const challengeStart = new Date(p.challenges.created_at);
-    const deadline = new Date(challengeStart.getTime() + (24 * 60 * 60 * 1000));
-    const msRemaining = deadline.getTime() - now.getTime();
-    const hoursRemaining = msRemaining / (1000 * 60 * 60);
+      const challengeStart = new Date((p.challenges as any).created_at);
+      const deadline = new Date(challengeStart.getTime() + (24 * 60 * 60 * 1000));
+      const hoursRemaining = (deadline.getTime() - now.getTime()) / (1000 * 60 * 60);
 
-    // Only remind if within the 3-hour window
-    if (hoursRemaining <= 3 && hoursRemaining > 0) {
-      const level = Math.ceil(hoursRemaining); // 3, 2, or 1
-      
-      // Basic check to avoid multiple messages in the same 15-min window
-      // For a production app, you'd track 'last_notified_level' in the DB
-      console.log(`Sending ${level}h reminder to ${p.wallet_address}`);
-      const msg = `⚠️ *Reminder:* You have less than ${level}h left to solve your "${p.challenges.title}" challenge! Don't lose your streak! 🔥`;
-      
-      try {
-        await bot.telegram.sendMessage(p.user_profiles.telegram_chat_id, msg, { parse_mode: 'Markdown' });
-      } catch (err) {
-        console.error(`Failed to send Telegram message to ${p.wallet_address}:`, err);
+      // Silent Reminders
+      if (hoursRemaining <= 3 && hoursRemaining > 0 && chatId) {
+        const level = Math.ceil(hoursRemaining);
+        await bot.telegram.sendMessage(chatId, `⚠️ Less than ${level}h left for "${(p.challenges as any).title}"!`, { parse_mode: 'Markdown' });
       }
-    }
 
-    // AUTOMATIC SLASHING LOGIC
-    // If time remaining is negative, they missed the daily deadline!
-    if (hoursRemaining <= 0) {
-      console.log(`💀 Participant ${p.wallet_address} missed deadline for "${p.challenges.title}". Slashing on-chain...`);
-      
-      try {
-        // Determine beneficiary (Self-challenges use the specified beneficiary, Community use the creator)
-        const beneficiary = p.challenges.mode === 'Self' && p.challenges.beneficiaries?.[0] 
-          ? p.challenges.beneficiaries[0] 
-          : p.challenges.creator_wallet;
+      // Slashing
+      if (hoursRemaining <= 0 && p.last_slashed_date !== todayStr) {
+        const beneficiary = (p.challenges as any).mode === 'Self' && (p.challenges as any).beneficiaries?.[0] 
+          ? (p.challenges as any).beneficiaries[0] 
+          : (p.challenges as any).creator_wallet;
 
-        await applyPenaltyOnChain(
-          p.challenges.id,
-          p.wallet_address,
-          beneficiary
-        );
+        await applyPenaltyOnChain((p.challenges as any).id, p.wallet_address, beneficiary);
         
-        // Notify user via Telegram about the penalty
-        if (p.user_profiles?.telegram_chat_id) {
-          const alert = `🚨 *PENALTY APPLIED:* You missed your deadline for "${p.challenges.title}". Your stake has been partially slashed on-chain! 📉`;
-          await bot.telegram.sendMessage(p.user_profiles.telegram_chat_id, alert, { parse_mode: 'Markdown' });
+        const newStrikes = (p.strike_count || 0) + 1;
+        await supabase
+          .from('challenge_participants')
+          .update({ strike_count: newStrikes, status: newStrikes >= 3 ? 'Eliminated' : 'Active', last_slashed_date: todayStr })
+          .eq('id', p.id);
+        
+        slashCount++;
+        if (chatId) {
+          await bot.telegram.sendMessage(chatId, `🚨 Penalty applied for "${(p.challenges as any).title}".`, { parse_mode: 'Markdown' });
         }
-      } catch (slashErr) {
-        console.error(`Failed to execute automatic slash for ${p.wallet_address}:`, slashErr);
       }
+    } catch (err: any) {
+      console.error(`   ❌ User ${p.wallet_address} failed: ${err.message}`);
     }
   }
+
+  if (slashCount > 0) console.log(`   ✅ Cycle finished. Slashed ${slashCount} users.`);
 };
+
+

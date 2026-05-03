@@ -13,6 +13,8 @@ import { useAnchorWallet, useConnection, useWallet } from "@solana/wallet-adapte
 import { Transaction, SystemProgram, PublicKey, LAMPORTS_PER_SOL } from "@solana/web3.js";
 import { AnchorProvider } from "@coral-xyz/anchor";
 import { getProgram, getChallengePoolPDA, getParticipantRecordPDA } from "@/lib/anchorClient";
+import ChallengeDetailsDialog from "@/components/ChallengeDetailsDialog";
+
 
 const tabs = ["Community", "Friends", "Private"];
 const TREASURY_ADDRESS = "6mVNBR3QPCzmVPPs6oazBGVfdMBFdtqcsyBxhxDanUam";
@@ -24,6 +26,8 @@ const Challenges = () => {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isProcessingTx, setIsProcessingTx] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
+  const [selectedChallenge, setSelectedChallenge] = useState<any>(null);
+
   
   const { addChallenge, setActiveChallenges, walletAddress, activeChallenges, githubHandle, leetcodeHandle, codeforcesHandle } = useUserStore();
   const { connection } = useConnection();
@@ -32,57 +36,82 @@ const Challenges = () => {
 
   const fetchChallenges = async () => {
     setIsLoading(true);
-    const { data: challengesData, error: challengesError } = await supabase
-      .from('challenges')
-      .select(`
-        *,
-        challenge_participants!fk_challenge (count)
-      `)
-      .order('created_at', { ascending: false });
-
-    if (challengesError) {
-      toast.error("Failed to fetch challenges");
-    } else {
-      setChallenges(challengesData || []);
-    }
-    
-    // Fetch active challenges for this user
-    if (walletAddress) {
-      const { data: participantData } = await supabase
-        .from('challenge_participants')
+    try {
+      const { data: challengesData, error: challengesError } = await supabase
+        .from('challenges')
         .select(`
-          last_solved_date,
-          challenges!fk_challenge (
-            id, title, duration, stake, platform
-          )
+          *,
+          challenge_participants!fk_challenge (count)
         `)
-        .ilike('wallet_address', walletAddress);
-        
-      if (participantData) {
-        const myChallenges = participantData.map(p => {
-          const c = p.challenges as any;
-          return {
-            id: c.id,
-            title: c.title,
-            days: parseInt(c.duration),
-            stakeAmount: parseFloat(c.stake),
-            isActive: true,
-            startDate: new Date(), 
-            platform: c.platform,
-            lastSolvedDate: p.last_solved_date || undefined,
-            userWallet: walletAddress
-          };
-        });
-        setActiveChallenges(myChallenges);
-      }
-    }
+        .order('created_at', { ascending: false });
 
-    setIsLoading(false);
+      if (challengesError) throw challengesError;
+
+      let userParticipations: any[] = [];
+      if (walletAddress) {
+        const { data: pData } = await supabase
+          .from('challenge_participants')
+          .select('*')
+          .ilike('wallet_address', walletAddress);
+        userParticipations = pData || [];
+      }
+
+      const merged = (challengesData || []).map(c => {
+        const myPart = userParticipations.find(p => p.challenge_id === c.id);
+        return {
+          ...c,
+          myStatus: myPart?.status || 'Not Joined',
+          myStrikes: myPart?.strike_count || 0
+        };
+      });
+
+      setChallenges(merged);
+    } catch (error) {
+      toast.error("Failed to fetch challenges");
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   useEffect(() => {
     fetchChallenges();
+    
+    // Fetch active challenges for this user for the store
+    const fetchActive = async () => {
+      if (walletAddress) {
+        const { data: participantData } = await supabase
+          .from('challenge_participants')
+          .select(`
+            last_solved_date,
+            challenges!fk_challenge (
+              id, title, duration, stake, platform
+            )
+          `)
+          .ilike('wallet_address', walletAddress);
+          
+        if (participantData) {
+          const myChallenges = participantData.map(p => {
+            const c = p.challenges as any;
+            return {
+              id: c.id,
+              title: c.title,
+              days: parseInt(c.duration),
+              stakeAmount: parseFloat(c.stake),
+              isActive: true,
+              startDate: new Date(), 
+              platform: c.platform,
+              lastSolvedDate: p.last_solved_date || undefined,
+              userWallet: walletAddress
+            };
+          });
+          setActiveChallenges(myChallenges);
+        }
+      }
+    };
+    fetchActive();
   }, [walletAddress]);
+
+
 
   const filtered = challenges.filter(c => {
     // 1. Search filter
@@ -374,25 +403,41 @@ const Challenges = () => {
             <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-5">
               {filtered.map((c, i) => (
                 <ScrollReveal key={c.id} delay={i * 0.08}>
-                  <motion.div whileHover={{ y: -4 }} className="glass-card rounded-2xl p-6 space-y-4 h-full flex flex-col border border-white/5 shadow-xl hover:shadow-primary/5 transition-shadow">
+                  <motion.div 
+                    whileHover={c.myStatus === "Eliminated" ? {} : { y: -4 }} 
+                    onClick={() => setSelectedChallenge(c)}
+                    className={`rounded-2xl p-6 space-y-4 h-full flex flex-col border transition-all relative overflow-hidden ${
+                      c.myStatus === "Eliminated" 
+                        ? "bg-red-500/5 border-red-500/40 shadow-lg shadow-red-500/5" 
+                        : "glass-card border-white/5 shadow-xl hover:shadow-primary/5"
+                    }`}
+                  >
+                    {c.myStatus === "Eliminated" && (
+                      <div className="absolute top-0 left-0 w-full bg-red-500 text-white text-[10px] font-bold text-center py-1 uppercase tracking-widest z-10 animate-pulse">
+                        Challenge Lost
+                      </div>
+                    )}
+
                     <div className="flex items-center justify-between">
                       <span className={`px-3 py-1 rounded-full text-xs font-bold ${
+                        c.myStatus === "Eliminated" ? "bg-red-500 text-white" :
                         c.status === "Live" ? "bg-primary/20 text-primary" : c.status === "Active" ? "bg-accent/20 text-accent" : "bg-secondary/20 text-secondary"
-                      }`}>{c.status}</span>
+                      }`}>{c.myStatus === "Eliminated" ? "ELIMINATED" : c.status}</span>
                       <span className="text-xs font-mono font-medium text-muted-foreground bg-muted/50 px-2 py-1 rounded-md">{c.mode}</span>
                     </div>
                     
                     <div className="flex items-start justify-between">
                       <div>
-                        <h3 className="text-xl font-bold font-display mb-2 text-foreground">{c.title}</h3>
+                        <h3 className={`text-xl font-bold font-display mb-2 ${c.myStatus === "Eliminated" ? "text-red-400" : "text-foreground"}`}>{c.title}</h3>
                         <div className="flex gap-2 flex-wrap">
                           {c.tags?.map((t: string) => (
-                            <span key={t} className="px-2.5 py-0.5 rounded-md bg-secondary/10 text-[11px] font-semibold text-secondary">{t}</span>
+                            <span key={t} className={`px-2.5 py-0.5 rounded-md text-[11px] font-semibold ${c.myStatus === "Eliminated" ? "bg-red-500/10 text-red-400" : "bg-secondary/10 text-secondary"}`}>{t}</span>
                           ))}
                         </div>
                       </div>
                       <button 
-                        onClick={() => {
+                        onClick={(e) => {
+                          e.stopPropagation();
                           navigator.clipboard.writeText(c.id);
                           toast.success("Challenge ID copied! Send this to your friends.");
                         }}
@@ -403,30 +448,45 @@ const Challenges = () => {
                       </button>
                     </div>
                     
-                    <div className="grid grid-cols-3 gap-2 py-4 mt-auto border-t border-white/5 font-mono text-sm">
-                      <div className="flex flex-col items-center justify-center p-2 rounded-lg bg-black/20">
-                        <span className="text-xs text-muted-foreground mb-1">Duration</span>
-                        <span className="font-semibold text-foreground">{c.duration}</span>
+                    {c.myStatus === "Eliminated" ? (
+                      <div className="flex flex-col items-center justify-center py-6 mt-4 border-t border-red-500/20 bg-red-500/10 rounded-xl space-y-2">
+                         <div className="text-red-500 font-black text-2xl tracking-tighter italic">YOU LOST</div>
+                         <div className="text-red-400/80 text-[11px] text-center px-4 leading-tight">You missed too many daily goals and your stake has been partially slashed.</div>
                       </div>
-                      <div className="flex flex-col items-center justify-center p-2 rounded-lg bg-black/20">
-                        <span className="text-xs text-muted-foreground mb-1">Stake</span>
-                        <span className="font-semibold text-accent">{c.stake} ◎</span>
+                    ) : (
+                      <div className="grid grid-cols-3 gap-2 py-4 mt-auto border-t border-white/5 font-mono text-sm">
+                        <div className="flex flex-col items-center justify-center p-2 rounded-lg bg-black/20">
+                          <span className="text-xs text-muted-foreground mb-1">Duration</span>
+                          <span className="font-semibold text-foreground">{c.duration}</span>
+                        </div>
+                        <div className="flex flex-col items-center justify-center p-2 rounded-lg bg-black/20">
+                          <span className="text-xs text-muted-foreground mb-1">Stake</span>
+                          <span className="font-semibold text-accent">{c.stake} ◎</span>
+                        </div>
+                        <div className="flex flex-col items-center justify-center p-2 rounded-lg bg-black/20">
+                          <span className="text-xs text-muted-foreground mb-1">Users</span>
+                          <span className="font-semibold text-foreground">{c.challenge_participants?.[0]?.count || 0}</span>
+                        </div>
                       </div>
-                      <div className="flex flex-col items-center justify-center p-2 rounded-lg bg-black/20">
-                        <span className="text-xs text-muted-foreground mb-1">Users</span>
-                        <span className="font-semibold text-foreground">{c.challenge_participants?.[0]?.count || 0}</span>
-                      </div>
-                    </div>
+                    )}
                     
-                    {c.mode !== 'Self' && (
+                    {!['Self', 'Joined'].includes(c.myStatus) && c.myStatus !== 'Eliminated' && (
                       <div className="flex gap-2 pt-2">
                         <button 
-                           onClick={() => handleJoinClick(c)} 
+                           onClick={(e) => { e.stopPropagation(); handleJoinClick(c); }} 
                            disabled={isProcessingTx}
                            className="flex-1 py-3 rounded-xl bg-primary text-primary-foreground font-bold shadow-lg shadow-primary/20 hover:opacity-90 hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
                         >
                           {isProcessingTx ? "Checking..." : "Stake to Join"}
                         </button>
+                      </div>
+                    )}
+
+                    {c.myStatus === 'Joined' && (
+                      <div className="flex gap-2 pt-2">
+                        <div className="flex-1 py-3 rounded-xl bg-green-500/10 text-green-400 font-bold border border-green-500/20 text-center text-sm">
+                          Joined & Active
+                        </div>
                       </div>
                     )}
                   </motion.div>
@@ -454,7 +514,17 @@ const Challenges = () => {
         onSuccess={fetchChallenges}
       />
       
+      {selectedChallenge && (
+        <ChallengeDetailsDialog
+          isOpen={!!selectedChallenge}
+          onClose={() => setSelectedChallenge(null)}
+          challenge={selectedChallenge}
+          onStatusChange={fetchChallenges}
+        />
+      )}
+      
       <Footer />
+
     </div>
   );
 };
