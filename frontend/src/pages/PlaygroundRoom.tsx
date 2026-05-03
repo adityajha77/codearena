@@ -77,7 +77,8 @@ export default function PlaygroundRoom() {
         for (const q of questions) {
           try {
             const response = await fetch(`/challenges/${q.id}`);
-            if (response.ok) {
+            const contentType = response.headers.get("content-type");
+            if (response.ok && contentType && contentType.includes("application/json")) {
               loadedQuestions.push(await response.json());
             } else {
               // Try Supabase fallback
