@@ -5,8 +5,12 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
-// The Master Wallet Secret Key (Keep this extremely secure!)
-const SECRET_KEY = Uint8Array.from([179,84,239,99,114,68,138,179,31,254,13,87,226,147,237,122,69,22,62,9,102,133,55,29,83,91,93,206,156,177,158,199,250,99,65,66,244,98,79,200,118,174,74,82,146,115,15,125,71,37,182,88,102,191,53,215,239,63,37,143,93,169,192,37]);
+// The Master Wallet Secret Key (Read from environment variables)
+const SECRET_KEY_STR = process.env.ORACLE_SECRET_KEY;
+if (!SECRET_KEY_STR) {
+  throw new Error("ORACLE_SECRET_KEY not found in .env");
+}
+const SECRET_KEY = Uint8Array.from(JSON.parse(SECRET_KEY_STR));
 const masterWallet = Keypair.fromSecretKey(SECRET_KEY);
 
 const connection = new Connection("https://api.devnet.solana.com", "confirmed");

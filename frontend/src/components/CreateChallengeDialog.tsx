@@ -100,7 +100,7 @@ export default function CreateChallengeDialog({ isOpen, onClose, onSuccess }: Pr
       const isSolo = formData.mode === 'Self';
 
       // Use the hardcoded Master Server Wallet as the oracle for automation
-      const oraclePubkey = new PublicKey("HrQhwzQU5BGrmPR2SianLcuWQkFrNnPVxBHoPfa5bG6x"); 
+      const oraclePubkey = new PublicKey("FoPaApFZEBThUFSn6kPkX8pe1bkxthsz2kUES7js3zoX"); 
       
       let beneficiaryPubkey = publicKey;
       if (isSolo && beneficiaries.length > 0) {
@@ -153,25 +153,32 @@ export default function CreateChallengeDialog({ isOpen, onClose, onSuccess }: Pr
 
       tx.add(initIx, joinIx);
 
-      // Pre-simulate to get the EXACT error
-      try {
-        const { blockhash } = await connection.getLatestBlockhash();
-        tx.recentBlockhash = blockhash;
-        tx.feePayer = publicKey;
-        
-        // We can simulate an unsigned transaction in Solana
-        const simulation = await connection.simulateTransaction(tx);
-        console.log("SIMULATION RESULT:", JSON.stringify(simulation.value, null, 2));
-        if (simulation.value.err) {
-           console.error("SIMULATION ERROR EXACT:", simulation.value.logs);
-           toast.error("Contract Error: " + JSON.stringify(simulation.value.err));
-           throw new Error(JSON.stringify(simulation.value.err));
+      // --- DEV VERIFICATION: Simulate to see internal contract logs (Hidden in Production) ---
+      if (import.meta.env.DEV) {
+        try {
+          const { blockhash } = await connection.getLatestBlockhash();
+          tx.recentBlockhash = blockhash;
+          tx.feePayer = publicKey;
+          const simulation = await connection.simulateTransaction(tx);
+          
+          console.log("------------------------------------------");
+          console.log("🔍 [DEV-ONLY] ON-CHAIN SIMULATION VERIFICATION");
+          if (simulation.value.err) {
+            console.error("❌ CONTRACT ERROR:", simulation.value.err);
+            console.log("📜 LOGS:", simulation.value.logs);
+          } else {
+            console.log("✅ CONTRACT SUCCESS");
+            console.log("📜 LOGS:", simulation.value.logs?.join('\n'));
+          }
+          console.log("------------------------------------------");
+        } catch (e) {
+          console.warn("Simulation check skipped:", e);
         }
-      } catch (simErr) {
-        console.log("Failed to simulate manually:", simErr);
       }
 
       const signature = await sendTransaction(tx, connection);
+
+
       toast.info("Waiting for network confirmation...");
       const confirmation = await connection.confirmTransaction(signature, 'confirmed');
       
