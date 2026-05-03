@@ -68,23 +68,31 @@ export default function Playground() {
 
     // Randomization Logic
     const count = parseInt(questionCount);
-    let pool = challengesMetadata.filter(q => q.difficulty === difficulty);
+    let finalQuestions: any[] = [];
     
     if (selectedTopics.length > 0) {
-      pool = pool.filter(q => q.tags.some(t => selectedTopics.includes(t)));
+      const uniqueIds = new Set();
+      
+      for (const topic of selectedTopics) {
+        let topicPool = challengesMetadata.filter(q => q.difficulty === difficulty && q.tags.includes(topic));
+        const shuffled = [...topicPool].sort(() => 0.5 - Math.random());
+        const picked = shuffled.slice(0, Math.min(count, topicPool.length));
+        
+        for (const q of picked) {
+          if (!uniqueIds.has(q.id)) {
+            uniqueIds.add(q.id);
+            finalQuestions.push(q);
+          }
+        }
+      }
+    } else {
+      let pool = challengesMetadata.filter(q => q.difficulty === difficulty);
+      const shuffled = [...pool].sort(() => 0.5 - Math.random());
+      finalQuestions = shuffled.slice(0, Math.min(count, pool.length));
     }
 
-    if (pool.length === 0) {
-      toast.error(`No ${difficulty} questions found for the selected topics.`);
-      return;
-    }
-
-    // Shuffle and pick
-    const shuffled = [...pool].sort(() => 0.5 - Math.random());
-    const finalQuestions = shuffled.slice(0, Math.min(count, pool.length));
-    
     if (finalQuestions.length === 0) {
-      toast.error("Could not find any matching questions.");
+      toast.error(`No ${difficulty} questions found for the selected criteria.`);
       return;
     }
 
@@ -256,7 +264,7 @@ export default function Playground() {
               </div>
               <p className="text-[11px] text-muted-foreground">
                 The arena will automatically select {questionCount} random {difficulty} questions 
-                {selectedTopics.length > 0 ? ` from: ${selectedTopics.join(", ")}` : " from all topics"}.
+                {selectedTopics.length > 0 ? ` from EACH selected topic: ${selectedTopics.join(", ")}` : " from all topics"}.
               </p>
             </div>
 

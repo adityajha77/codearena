@@ -32,8 +32,7 @@ const Navbar = () => {
       const { count } = await supabase
         .from('notifications')
         .select('*', { count: 'exact', head: true })
-        .eq('recipient_wallet', walletAddress)
-        .eq('is_read', false);
+        .eq('recipient_wallet', walletAddress);
       
       setUnreadCount(count || 0);
     };
@@ -42,7 +41,7 @@ const Navbar = () => {
 
     // Subscribe to new notifications
     const channel = supabase
-      .channel('schema-db-changes')
+      .channel(`notifications-${walletAddress}`)
       .on(
         'postgres_changes',
         {

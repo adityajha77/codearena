@@ -12,6 +12,8 @@ import { createClient } from "@supabase/supabase-js";
 import { Clock, Users, Play, Upload, User, Copy, Trash2, Home, RefreshCw, ArrowLeft } from "lucide-react";
 import { usePlaygroundTimer } from "@/hooks/usePlaygroundTimer";
 import { useUserStore } from "@/store/userStore";
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 
 // Ensure you have configured supabaseClient properly
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
@@ -116,6 +118,10 @@ export default function PlaygroundRoom() {
             wallet_address: publicKey.toBase58(),
             score: 0
           });
+        await supabase.channel(`playground_presence:${roomId}`).send({
+          type: 'broadcast',
+          event: 'new_participant',
+        });
       }
     };
 
@@ -191,16 +197,78 @@ export default function PlaygroundRoom() {
     // Setup Supabase Presence for live "Online" status
     if (!roomId || !publicKey) return;
 
+    const refreshParticipants = async () => {
+      const { data: parts } = await supabase
+        .from('playground_participants')
+        .select('*')
+        .eq('room_id', roomId);
+      
+      if (parts) {
+        const wallets = parts.map(p => p.wallet_address);
+        const { data: profiles } = await supabase
+          .from('user_profiles')
+          .select('wallet_address, display_name')
+          .in('wallet_address', wallets);
+
+        const profileMap = new Map(profiles?.map(p => [p.wallet_address, p.display_name]) || []);
+
+        setParticipants(prev => {
+          // Keep online status from prev if available
+          const prevOnlineMap = new Map(prev.map(p => [p.wallet, p.online]));
+          
+          return parts.map((p: any) => ({
+            wallet: p.wallet_address,
+            name: profileMap.get(p.wallet_address) || p.wallet_address.slice(0, 6) + "...",
+            score: p.score,
+            passed: p.test_cases_passed,
+            total: p.total_test_cases,
+            online: prevOnlineMap.get(p.wallet_address) || false
+          }));
+        });
+      }
+    };
+
     const channel = supabase.channel(`playground_presence:${roomId}`);
     channel
       .on('presence', { event: 'sync' }, () => {
         const state = channel.presenceState();
-        const activeWallets = Object.keys(state);
         
-        setParticipants(prev => prev.map(p => ({
-          ...p,
-          online: activeWallets.includes(p.wallet)
-        })));
+        // Extract wallets from presence state
+        const activeWallets: string[] = [];
+        for (const key in state) {
+          const presences = state[key] as any[];
+          presences.forEach(p => {
+            if (p.wallet) activeWallets.push(p.wallet);
+          });
+        }
+        
+        setParticipants(prev => {
+          const knownWallets = new Set(prev.map(p => p.wallet));
+          const hasNewParticipant = activeWallets.some(w => !knownWallets.has(w));
+          
+          if (hasNewParticipant) {
+             // We discovered a new participant via presence! Fetch their DB details
+             setTimeout(refreshParticipants, 100);
+          }
+          
+          return prev.map(p => ({
+            ...p,
+            online: activeWallets.includes(p.wallet)
+          }));
+        });
+      })
+      .on('broadcast', { event: 'start_challenge' }, (payload) => {
+         setRoomData((prev: any) => prev ? { ...prev, status: 'active', start_time: payload.payload.start_time } : prev);
+         toast.success("Host has started the challenge!");
+      })
+      .on('broadcast', { event: 'room_deleted' }, () => {
+         toast.error("Challenge was cancelled or deleted by the host.");
+         setTimeout(() => {
+           window.location.href = '/playground';
+         }, 1500);
+      })
+      .on('broadcast', { event: 'new_participant' }, () => {
+         refreshParticipants();
       })
       .subscribe(async (status) => {
         if (status === 'SUBSCRIBED') {
@@ -267,25 +335,21 @@ export default function PlaygroundRoom() {
   }, [roomId, publicKey]);
 
   useEffect(() => {
-    // Automatically SUBMIT and finish challenge when timer ends
-    const autoSubmitAndFinish = async () => {
+    // Automatically finish challenge when timer ends
+    const autoFinish = async () => {
       if (currentPhase === 'active' && timeRemaining === 0 && roomData?.status === 'active') {
-        // Auto-submit if not already submitted
-        if (!isSubmitted) {
-          await handleSubmit();
+        // Only host updates the room status to avoid race conditions
+        if (publicKey?.toBase58() === roomData.host_address) {
+          const { error } = await supabase
+            .from('playground_rooms')
+            .update({ status: 'finished' })
+            .eq('id', roomId);
         }
-
-        const { error } = await supabase
-          .from('playground_rooms')
-          .update({ status: 'finished' })
-          .eq('id', roomId);
-        if (!error) {
-          toast.info("Time is up! Code submitted automatically.");
-        }
+        toast.info("Time is up! Challenge has ended.");
       }
     };
-    autoSubmitAndFinish();
-  }, [timeRemaining, currentPhase, roomData?.status, roomId, isSubmitted]);
+    autoFinish();
+  }, [timeRemaining, currentPhase, roomData?.status, roomId, publicKey, roomData?.host_address]);
 
   useEffect(() => {
     // Play beep sound when near end
@@ -332,17 +396,24 @@ export default function PlaygroundRoom() {
   };
 
   const handleSubmit = async () => {
-    const results = testResultsMap[activeQuestionIndex];
-    if (!results) {
-      toast.error("Please run your code first.");
-      return;
-    }
-    
     setIsRunning(true);
     try {
       if (publicKey && roomId) {
-        // Calculate total score across all questions
-        const newResultsMap = { ...testResultsMap };
+        // Run validation on submit
+        const currentQuestion = questionDataList[activeQuestionIndex];
+        const currentCode = codes[activeQuestionIndex] || CODE_TEMPLATES[language] || "// Write your code here";
+
+        if (!currentQuestion?.testCases) {
+          toast.error("Question data not loaded yet.");
+          setIsRunning(false);
+          return;
+        }
+
+        const results = await validateTestCases(language, currentCode, currentQuestion.testCases);
+        const newResultsMap = { ...testResultsMap, [activeQuestionIndex]: results };
+        setTestResultsMap(newResultsMap);
+
+        // Calculate total score across all questions (10 points per passed test case, -2 points per failed test case)
         const totalScore = Object.values(newResultsMap).reduce((acc: number, res: any) => {
           return acc + (res.passed * 10 - (res.total - res.passed) * 2);
         }, 0);
@@ -358,9 +429,8 @@ export default function PlaygroundRoom() {
           .eq('wallet_address', publicKey.toBase58());
         
         if (error) throw error;
-        // Only mark as fully submitted if it's the last question or user wants to end?
-        // Actually, let's just allow partial submissions.
-        toast.success("Progress saved!");
+        setIsSubmitted(true);
+        toast.success("Code submitted successfully!");
       }
     } catch (e: any) {
       toast.error(e.message);
@@ -372,11 +442,20 @@ export default function PlaygroundRoom() {
   const handleStartChallenge = async () => {
     if (!roomId) return;
     try {
+      const startTime = new Date().toISOString();
       const { error } = await supabase
         .from('playground_rooms')
-        .update({ status: 'active', start_time: new Date().toISOString() })
+        .update({ status: 'active', start_time: startTime })
         .eq('id', roomId);
       if (error) throw error;
+      
+      await supabase.channel(`playground_presence:${roomId}`).send({
+        type: 'broadcast',
+        event: 'start_challenge',
+        payload: { start_time: startTime }
+      });
+
+      setRoomData((prev: any) => prev ? { ...prev, status: 'active', start_time: startTime } : prev);
       toast.success("Challenge Started!");
     } catch (e: any) {
       toast.error(e.message || "Failed to start challenge");
@@ -387,6 +466,12 @@ export default function PlaygroundRoom() {
     if (!roomId || !window.confirm("Are you sure you want to delete this challenge? This will remove all participants.")) return;
     
     try {
+      // Notify all participants before deleting
+      await supabase.channel(`playground_presence:${roomId}`).send({
+        type: 'broadcast',
+        event: 'room_deleted',
+      });
+
       const { error } = await supabase
         .from('playground_rooms')
         .delete()
@@ -655,7 +740,11 @@ export default function PlaygroundRoom() {
                 <h2 className="text-2xl font-bold mb-4">{questionDataList[activeQuestionIndex]?.title || "Loading Problem..."}</h2>
                 <div className="prose dark:prose-invert max-w-none">
                   {questionDataList[activeQuestionIndex]?.description ? (
-                    <div dangerouslySetInnerHTML={{ __html: questionDataList[activeQuestionIndex].description.replace(/\n/g, '<br/>') }} />
+                    <ReactMarkdown 
+                      remarkPlugins={[remarkGfm]}
+                    >
+                      {questionDataList[activeQuestionIndex].description.replace(/\\n/g, '\n')}
+                    </ReactMarkdown>
                   ) : (
                     <p className="text-muted-foreground italic">Problem description is being fetched...</p>
                   )}

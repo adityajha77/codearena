@@ -97,7 +97,7 @@ export async function executeCode(
 export async function validateTestCases(
   languageId: string,
   sourceCode: string,
-  testCases: { input: string; expectedOutput: string }[]
+  testCases: any[]
 ) {
   let passedCount = 0;
   const results = [];
@@ -118,7 +118,7 @@ export async function validateTestCases(
       }
 
       const output = (result.output || "").trim();
-      const expected = (testCase.expectedOutput || "").trim();
+      const expected = (testCase.expected || testCase.expectedOutput || "").trim();
       const isCorrect = output === expected;
 
       if (isCorrect) passedCount++;
