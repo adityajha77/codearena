@@ -7,10 +7,10 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { useUserStore } from "@/store/userStore";
 import { toast } from "sonner";
-import { useConnection, useWallet } from "@solana/wallet-adapter-react";
+import { useAnchorWallet, useConnection, useWallet } from "@solana/wallet-adapter-react";
 import { Transaction, SystemProgram, PublicKey, LAMPORTS_PER_SOL } from "@solana/web3.js";
-
-const TREASURY_ADDRESS = "6mVNBR3QPCzmVPPs6oazBGVfdMBFdtqcsyBxhxDanUam";
+import { AnchorProvider } from "@coral-xyz/anchor";
+import { getProgram, getChallengePoolPDA, getParticipantRecordPDA } from "@/lib/anchorClient";
 
 const typeColor = (t: string) => {
   switch (t) {
@@ -30,6 +30,7 @@ const Notifications = () => {
   
   const { connection } = useConnection();
   const { publicKey, sendTransaction } = useWallet();
+  const anchorWallet = useAnchorWallet();
 
   const fetchNotifications = async () => {
     if (!walletAddress) {
@@ -81,19 +82,26 @@ const Notifications = () => {
       
       setIsProcessingTx(true);
       
-      const destPubkey = new PublicKey(TREASURY_ADDRESS);
-      const stakeLamports = Math.round(parseFloat(challenge.stake) * LAMPORTS_PER_SOL);
+      const provider = new AnchorProvider(connection, anchorWallet as any, { commitment: "processed" });
+      const program = getProgram(provider);
 
-      const transaction = new Transaction().add(
-        SystemProgram.transfer({
-            fromPubkey: publicKey!,
-            toPubkey: destPubkey,
-            lamports: stakeLamports,
-        })
-      );
+      const challengePoolPDA = getChallengePoolPDA(challenge.id);
+      const participantRecordPDA = getParticipantRecordPDA(challengePoolPDA, publicKey!);
+
+      const tx = new Transaction();
+      const joinIx = await program.methods.joinChallenge()
+      .accounts({
+        challengePool: challengePoolPDA,
+        participantRecord: participantRecordPDA,
+        user: publicKey!,
+        systemProgram: SystemProgram.programId,
+      })
+      .instruction();
+
+      tx.add(joinIx);
       
       toast.info("Please approve the transaction in your wallet...");
-      const signature = await sendTransaction(transaction, connection);
+      const signature = await sendTransaction(tx, connection);
       toast.info("Transaction sent. Waiting for network confirmation...");
       await connection.confirmTransaction(signature, 'processed');
 

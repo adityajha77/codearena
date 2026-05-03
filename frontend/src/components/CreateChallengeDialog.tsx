@@ -6,8 +6,10 @@ import { Label } from "@/components/ui/label";
 import { supabase } from "@/lib/supabase";
 import { useUserStore } from "@/store/userStore";
 import { toast } from "sonner";
-import { useConnection, useWallet } from "@solana/wallet-adapter-react";
+import { useAnchorWallet, useConnection, useWallet } from "@solana/wallet-adapter-react";
 import { Transaction, SystemProgram, PublicKey, LAMPORTS_PER_SOL } from "@solana/web3.js";
+import { AnchorProvider, BN } from "@coral-xyz/anchor";
+import { getProgram, getChallengePoolPDA, getParticipantRecordPDA } from "@/lib/anchorClient";
 
 interface Props {
   isOpen: boolean;
@@ -22,6 +24,7 @@ export default function CreateChallengeDialog({ isOpen, onClose, onSuccess }: Pr
   const { walletAddress, addChallenge, githubHandle, leetcodeHandle, codeforcesHandle } = useUserStore();
   const { connection } = useConnection();
   const { publicKey, sendTransaction } = useWallet();
+  const anchorWallet = useAnchorWallet();
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formData, setFormData] = useState({
@@ -91,25 +94,94 @@ export default function CreateChallengeDialog({ isOpen, onClose, onSuccess }: Pr
     setIsSubmitting(true);
     
     try {
-      // 1. Transaction to Treasury for Staking
-      const destPubkey = new PublicKey(TREASURY_ADDRESS);
-      const stakeLamports = Math.round(parseFloat(formData.stake) * LAMPORTS_PER_SOL);
+      const challengeId = (crypto.randomUUID ? crypto.randomUUID().replace(/-/g, '') : Date.now().toString() + Math.random().toString().slice(2)).substring(0, 32);
+      const stakeLamports = new BN(Math.round(parseFloat(formData.stake) * LAMPORTS_PER_SOL));
+      const durationDays = parseInt(formData.duration) || 30;
+      const isSolo = formData.mode === 'Self';
+
+      // Use the creator as the oracle for local dev/testing
+      const oraclePubkey = publicKey; 
       
-      const transaction = new Transaction().add(
-        SystemProgram.transfer({
-            fromPubkey: publicKey,
-            toPubkey: destPubkey,
-            lamports: stakeLamports,
-        })
-      );
+      let beneficiaryPubkey = publicKey;
+      if (isSolo && beneficiaries.length > 0) {
+        beneficiaryPubkey = new PublicKey(beneficiaries[0]);
+      } else if (formData.mode === 'Friend' && friends.length > 0) {
+        beneficiaryPubkey = new PublicKey(friends[0]); // Just pick the first friend for dev
+      }
+
+      const walletToUse = anchorWallet || {
+        publicKey,
+        signTransaction: sendTransaction,
+        signAllTransactions: async (txs: any) => txs,
+      };
       
-      toast.info("Please approve the staking transfer in your wallet...");
-      const signature = await sendTransaction(transaction, connection);
+      const provider = new AnchorProvider(connection, walletToUse as any, { commitment: "processed" });
+      const program = getProgram(provider);
+
+      if (!challengeId) throw new Error("Challenge ID is undefined");
+      const challengePoolPDA = getChallengePoolPDA(challengeId);
+      const participantRecordPDA = getParticipantRecordPDA(challengePoolPDA, publicKey);
+
+      toast.info("Please approve the staking transactions...");
+
+      // Call initializePool AND joinChallenge in one transaction
+      const tx = new Transaction();
+      
+      const initIx = await program.methods.initializePool(
+        challengeId,
+        stakeLamports,
+        durationDays,
+        isSolo
+      )
+      .accounts({
+        challengePool: challengePoolPDA,
+        creator: publicKey,
+        oracle: oraclePubkey,
+        beneficiary: beneficiaryPubkey,
+        systemProgram: SystemProgram.programId,
+      })
+      .instruction();
+
+      const joinIx = await program.methods.joinChallenge()
+      .accounts({
+        challengePool: challengePoolPDA,
+        participantRecord: participantRecordPDA,
+        user: publicKey,
+        systemProgram: SystemProgram.programId,
+      })
+      .instruction();
+
+      tx.add(initIx, joinIx);
+
+      // Pre-simulate to get the EXACT error
+      try {
+        const { blockhash } = await connection.getLatestBlockhash();
+        tx.recentBlockhash = blockhash;
+        tx.feePayer = publicKey;
+        
+        // We can simulate an unsigned transaction in Solana
+        const simulation = await connection.simulateTransaction(tx);
+        console.log("SIMULATION RESULT:", JSON.stringify(simulation.value, null, 2));
+        if (simulation.value.err) {
+           console.error("SIMULATION ERROR EXACT:", simulation.value.logs);
+           toast.error("Contract Error: " + JSON.stringify(simulation.value.err));
+           throw new Error(JSON.stringify(simulation.value.err));
+        }
+      } catch (simErr) {
+        console.log("Failed to simulate manually:", simErr);
+      }
+
+      const signature = await sendTransaction(tx, connection);
       toast.info("Waiting for network confirmation...");
-      await connection.confirmTransaction(signature, 'processed');
+      const confirmation = await connection.confirmTransaction(signature, 'confirmed');
+      
+      if (confirmation.value.err) {
+        throw new Error("Transaction failed on-chain: " + JSON.stringify(confirmation.value.err));
+      }
 
       // 2. Insert challenge to Supabase
       const { data: challengeData, error: challengeError } = await supabase.from('challenges').insert([{
+        id: challengeId,
         title: formData.title,
         duration: formData.duration,
         stake: parseFloat(formData.stake),
@@ -175,7 +247,8 @@ export default function CreateChallengeDialog({ isOpen, onClose, onSuccess }: Pr
       onSuccess();
       onClose();
     } catch (error: any) {
-      toast.error("Error formatting transaction (Check addresses): " + error.message);
+      console.error("Tx error:", error);
+      toast.error("Transaction failed: " + error.message);
     } finally {
       setIsSubmitting(false);
     }

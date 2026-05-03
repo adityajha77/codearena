@@ -10,8 +10,10 @@ import {
   toDateString 
 } from "@/lib/api/platforms";
 import { calculatePenalty } from "@/lib/utils/penalty";
-import { useConnection, useWallet } from "@solana/wallet-adapter-react";
+import { useAnchorWallet, useConnection, useWallet } from "@solana/wallet-adapter-react";
 import { Transaction, SystemProgram, PublicKey, LAMPORTS_PER_SOL } from "@solana/web3.js";
+import { AnchorProvider } from "@coral-xyz/anchor";
+import { getProgram, getChallengePoolPDA, getParticipantRecordPDA } from "@/lib/anchorClient";
 
 export default function ChallengeDetailsDialog({ isOpen, onClose, challenge }: any) {
   const [participants, setParticipants] = useState<any[]>([]);
@@ -23,6 +25,7 @@ export default function ChallengeDetailsDialog({ isOpen, onClose, challenge }: a
   const [isProcessingTx, setIsProcessingTx] = useState(false);
   const { connection } = useConnection();
   const { publicKey, sendTransaction } = useWallet();
+  const anchorWallet = useAnchorWallet();
 
   useEffect(() => {
     if (!isOpen || !challenge) return;
@@ -117,6 +120,87 @@ export default function ChallengeDetailsDialog({ isOpen, onClose, challenge }: a
        ...prev,
        [wallet]: next
     }));
+  };
+
+  const applyOnChainPenalty = async (participantWalletStr: string, currentStatus: string) => {
+    try {
+      if (!publicKey) throw new Error("Wallet not connected");
+      
+      const walletToUse = anchorWallet || {
+        publicKey,
+        signTransaction: sendTransaction,
+        signAllTransactions: async (txs: any) => txs,
+      };
+      
+      const provider = new AnchorProvider(connection, walletToUse as any, { commitment: "processed" });
+      const program = getProgram(provider);
+      
+      const challengePoolPDA = getChallengePoolPDA(challenge.id);
+      const participantPubkey = new PublicKey(participantWalletStr);
+      const participantRecordPDA = getParticipantRecordPDA(challengePoolPDA, participantPubkey);
+      
+      toast.info("Fetching pool data...");
+      const poolData = await (program.account as any).challengePool.fetch(challengePoolPDA);
+
+      const tx = await program.methods.applyPenalty()
+        .accounts({
+          challengePool: challengePoolPDA,
+          participantRecord: participantRecordPDA,
+          oracle: publicKey,
+          beneficiary: poolData.beneficiary,
+        })
+        .transaction();
+        
+      toast.info("Please approve the slashing transaction...");
+      const signature = await sendTransaction(tx, connection);
+      toast.info("Transaction sent. Waiting for confirmation...");
+      await connection.confirmTransaction(signature, 'processed');
+      toast.success("Successfully applied penalty on-chain!");
+      
+      // Update local UI state to reflect penalty
+      toggleStatus(participantWalletStr, currentStatus);
+    } catch (error: any) {
+      toast.error("Failed to apply penalty: " + error.message);
+    }
+  };
+
+  const claimOnChainPayout = async (participantWalletStr: string) => {
+    try {
+      if (!publicKey) throw new Error("Wallet not connected");
+      if (publicKey.toBase58() !== participantWalletStr) {
+        throw new Error("You can only claim payouts for your own wallet!");
+      }
+      
+      const walletToUse = anchorWallet || {
+        publicKey,
+        signTransaction: sendTransaction,
+        signAllTransactions: async (txs: any) => txs,
+      };
+      
+      const provider = new AnchorProvider(connection, walletToUse as any, { commitment: "processed" });
+      const program = getProgram(provider);
+      
+      const challengePoolPDA = getChallengePoolPDA(challenge.id);
+      const participantPubkey = new PublicKey(participantWalletStr);
+      const participantRecordPDA = getParticipantRecordPDA(challengePoolPDA, participantPubkey);
+      
+      const tx = await program.methods.claimPayout()
+        .accounts({
+          challengePool: challengePoolPDA,
+          participantRecord: participantRecordPDA,
+          user: publicKey,
+        })
+        .transaction();
+        
+      toast.info("Please approve the claim transaction...");
+      const signature = await sendTransaction(tx, connection);
+      toast.info("Transaction sent. Waiting for confirmation...");
+      await connection.confirmTransaction(signature, 'processed');
+      toast.success("Successfully claimed your reward!");
+      
+    } catch (error: any) {
+      toast.error("Failed to claim payout: " + error.message);
+    }
   };
 
   const combinedParticipants = [...participants, ...mockBots].map(p => ({
@@ -251,10 +335,13 @@ export default function ChallengeDetailsDialog({ isOpen, onClose, challenge }: a
                   )}
                 </div>
                 
-                <div className="flex gap-4 text-sm text-muted-foreground mt-2">
+                <div className="flex gap-4 text-sm text-muted-foreground mt-2 flex-wrap">
                   <div>Base Pool: <span className="font-mono text-white">{currentPool.toFixed(2)} SOL</span></div>
                   <div>Current Survivors: <span className="text-primary font-bold">{validCount}</span> / {combinedParticipants.length}</div>
-                  <div>Prize per Survivor (Extrapolated): <span className="text-accent font-mono font-bold">~{poolPerSurvivor} SOL</span></div>
+                  <div>Prize per Survivor: <span className="text-accent font-mono font-bold">~{poolPerSurvivor} SOL</span></div>
+                  <div className="w-full mt-1">
+                    Vault Contract: <a href={`https://explorer.solana.com/address/${getChallengePoolPDA(challenge.id).toBase58()}?cluster=devnet`} target="_blank" rel="noopener noreferrer" className="font-mono text-blue-400 hover:text-blue-300 transition-colors underline decoration-blue-400/30">{getChallengePoolPDA(challenge.id).toBase58()}</a>
+                  </div>
                 </div>
               </div>
 
@@ -303,12 +390,28 @@ export default function ChallengeDetailsDialog({ isOpen, onClose, challenge }: a
                              {p.status === "Protected" && <><CheckCircle2 className="w-4 h-4 mb-1"/> Protected</>}
 
                              {import.meta.env.DEV && (
-                               <button 
-                                  onClick={(e) => { e.stopPropagation(); toggleStatus(p.wallet, p.status); }}
-                                  className="mt-2 text-[10px] bg-black/40 hover:bg-black/80 px-2 py-1 rounded w-full border border-white/5 active:scale-95 transition-all text-white font-mono"
-                               >
-                                  Cycle Status
-                               </button>
+                               <div className="mt-2 w-full flex flex-col gap-1">
+                                 <button 
+                                    onClick={(e) => { e.stopPropagation(); toggleStatus(p.wallet, p.status); }}
+                                    className="text-[10px] bg-black/40 hover:bg-black/80 px-2 py-1 rounded w-full border border-white/5 active:scale-95 transition-all text-white font-mono"
+                                 >
+                                    Cycle UI Status
+                                 </button>
+                                 <button 
+                                    onClick={(e) => { e.stopPropagation(); applyOnChainPenalty(p.wallet, p.status); }}
+                                    className="text-[10px] bg-red-500/20 text-red-400 hover:bg-red-500/40 px-2 py-1 rounded w-full border border-red-500/30 active:scale-95 transition-all font-mono"
+                                 >
+                                    Slash (On-Chain)
+                                 </button>
+                                 {publicKey?.toBase58() === p.wallet && (
+                                   <button 
+                                      onClick={(e) => { e.stopPropagation(); claimOnChainPayout(p.wallet); }}
+                                      className="text-[10px] bg-green-500/20 text-green-400 hover:bg-green-500/40 px-2 py-1 rounded w-full border border-green-500/30 active:scale-95 transition-all font-mono mt-1"
+                                   >
+                                      Claim Reward
+                                   </button>
+                                 )}
+                               </div>
                              )}
                           </div>
                        </div>

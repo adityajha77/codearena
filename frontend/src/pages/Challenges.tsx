@@ -9,8 +9,10 @@ import { toast } from "sonner";
 import { supabase } from "@/lib/supabase";
 import CreateChallengeDialog from "@/components/CreateChallengeDialog";
 import ActiveChallengeCard from "@/components/ActiveChallengeCard";
-import { useConnection, useWallet } from "@solana/wallet-adapter-react";
+import { useAnchorWallet, useConnection, useWallet } from "@solana/wallet-adapter-react";
 import { Transaction, SystemProgram, PublicKey, LAMPORTS_PER_SOL } from "@solana/web3.js";
+import { AnchorProvider } from "@coral-xyz/anchor";
+import { getProgram, getChallengePoolPDA, getParticipantRecordPDA } from "@/lib/anchorClient";
 
 const tabs = ["Community", "Friends", "Private"];
 const TREASURY_ADDRESS = "6mVNBR3QPCzmVPPs6oazBGVfdMBFdtqcsyBxhxDanUam";
@@ -26,6 +28,7 @@ const Challenges = () => {
   const { addChallenge, setActiveChallenges, walletAddress, activeChallenges, githubHandle, leetcodeHandle, codeforcesHandle } = useUserStore();
   const { connection } = useConnection();
   const { publicKey, sendTransaction } = useWallet();
+  const anchorWallet = useAnchorWallet();
 
   const fetchChallenges = async () => {
     setIsLoading(true);
@@ -153,20 +156,26 @@ const Challenges = () => {
   const executeStakingJoin = async (c: any) => {
     setIsProcessingTx(true);
     try {
-      // Staking always routes to treasury for community/friends
-      const destPubkey = new PublicKey(TREASURY_ADDRESS);
-      const stakeLamports = Math.round(parseFloat(c.stake) * LAMPORTS_PER_SOL);
+      const provider = new AnchorProvider(connection, anchorWallet as any, { commitment: "processed" });
+      const program = getProgram(provider);
 
-      const transaction = new Transaction().add(
-        SystemProgram.transfer({
-            fromPubkey: publicKey!,
-            toPubkey: destPubkey,
-            lamports: stakeLamports,
-        })
-      );
-      
+      const challengePoolPDA = getChallengePoolPDA(c.id);
+      const participantRecordPDA = getParticipantRecordPDA(challengePoolPDA, publicKey!);
+
+      const tx = new Transaction();
+      const joinIx = await program.methods.joinChallenge()
+      .accounts({
+        challengePool: challengePoolPDA,
+        participantRecord: participantRecordPDA,
+        user: publicKey!,
+        systemProgram: SystemProgram.programId,
+      })
+      .instruction();
+
+      tx.add(joinIx);
+
       toast.info("Please approve the transaction in your wallet...");
-      const signature = await sendTransaction(transaction, connection);
+      const signature = await sendTransaction(tx, connection);
       toast.info("Transaction sent. Waiting for network confirmation...");
       await connection.confirmTransaction(signature, 'processed');
 
