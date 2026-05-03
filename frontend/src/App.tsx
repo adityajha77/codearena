@@ -18,6 +18,8 @@ import { WalletSync } from "./components/WalletSync";
 import Playground from "./pages/Playground";
 import PlaygroundRoom from "./pages/PlaygroundRoom";
 import PlaygroundLeaderboard from "./pages/PlaygroundLeaderboard";
+import { Analytics } from "@vercel/analytics/react";
+
 
 const queryClient = new QueryClient();
 
@@ -45,7 +47,9 @@ const App = () => (
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>
+      <Analytics />
     </TooltipProvider>
+
   </QueryClientProvider>
 );
 
