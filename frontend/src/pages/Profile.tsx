@@ -10,7 +10,7 @@ import mascotImg from "@/assets/mascot.png";
 import { useUserStore } from "@/store/userStore";
 import { supabase } from "@/lib/supabase";
 import { toast } from "sonner";
-import { verifyGitHub, verifyLeetCode, verifyCodeforces, PlatformStats } from "@/lib/api/platforms";
+import { verifyGitHub, verifyLeetCode, verifyCodeforces, PlatformStats, fetchAggregatedActivity } from "@/lib/api/platforms";
 
 const motivationalMessages = [
   "Welcome back, builder.",
@@ -46,6 +46,8 @@ const Profile = () => {
   const [liveTotalStake, setLiveTotalStake] = useState(0);
   const [joinedCount, setJoinedCount] = useState(0);
 
+  const [platformActivity, setPlatformActivity] = useState<Record<string, number>>({});
+
   // Consolidated data fetcher
   useEffect(() => {
     if (!walletAddress) return;
@@ -60,6 +62,12 @@ const Profile = () => {
             if (data.leetcode) setLeetcodeHandle(data.leetcode);
             if (data.codeforces) setCodeforcesHandle(data.codeforces);
             if (data.twitter) setTwitterHandle(data.twitter);
+
+            // Fetch true historical heatmap data from connected platforms
+            fetchAggregatedActivity(data.github || null, data.leetcode || null, data.codeforces || null)
+              .then(activityMap => {
+                setPlatformActivity(activityMap);
+              });
          }
       });
     
@@ -338,7 +346,7 @@ const Profile = () => {
           <ScrollReveal>
             <div className="glass-card rounded-2xl p-6 mb-8 overflow-x-auto">
               <h2 className="text-lg font-bold font-display mb-4">Streak Calendar</h2>
-              <StreakHeatmap weeks={52} activityMap={dailyActivity} />
+              <StreakHeatmap weeks={52} activityMap={{ ...platformActivity, ...dailyActivity }} />
             </div>
           </ScrollReveal>
 
