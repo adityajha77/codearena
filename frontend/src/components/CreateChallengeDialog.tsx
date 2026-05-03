@@ -99,8 +99,8 @@ export default function CreateChallengeDialog({ isOpen, onClose, onSuccess }: Pr
       const durationDays = parseInt(formData.duration) || 30;
       const isSolo = formData.mode === 'Self';
 
-      // Use the creator as the oracle for local dev/testing
-      const oraclePubkey = publicKey; 
+      // Use the hardcoded Master Server Wallet as the oracle for automation
+      const oraclePubkey = new PublicKey("HrQhwzQU5BGrmPR2SianLcuWQkFrNnPVxBHoPfa5bG6x"); 
       
       let beneficiaryPubkey = publicKey;
       if (isSolo && beneficiaries.length > 0) {

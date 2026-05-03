@@ -2,6 +2,7 @@ import cron from 'node-cron';
 import { supabase } from './supabase';
 import { Telegraf } from 'telegraf';
 import dotenv from 'dotenv';
+import { applyPenaltyOnChain } from './oracle';
 
 dotenv.config();
 
@@ -65,6 +66,33 @@ export const runReminderCheck = async (force = false) => {
         await bot.telegram.sendMessage(p.user_profiles.telegram_chat_id, msg, { parse_mode: 'Markdown' });
       } catch (err) {
         console.error(`Failed to send Telegram message to ${p.wallet_address}:`, err);
+      }
+    }
+
+    // AUTOMATIC SLASHING LOGIC
+    // If time remaining is negative, they missed the daily deadline!
+    if (hoursRemaining <= 0) {
+      console.log(`💀 Participant ${p.wallet_address} missed deadline for "${p.challenges.title}". Slashing on-chain...`);
+      
+      try {
+        // Determine beneficiary (Self-challenges use the specified beneficiary, Community use the creator)
+        const beneficiary = p.challenges.mode === 'Self' && p.challenges.beneficiaries?.[0] 
+          ? p.challenges.beneficiaries[0] 
+          : p.challenges.creator_wallet;
+
+        await applyPenaltyOnChain(
+          p.challenges.id,
+          p.wallet_address,
+          beneficiary
+        );
+        
+        // Notify user via Telegram about the penalty
+        if (p.user_profiles?.telegram_chat_id) {
+          const alert = `🚨 *PENALTY APPLIED:* You missed your deadline for "${p.challenges.title}". Your stake has been partially slashed on-chain! 📉`;
+          await bot.telegram.sendMessage(p.user_profiles.telegram_chat_id, alert, { parse_mode: 'Markdown' });
+        }
+      } catch (slashErr) {
+        console.error(`Failed to execute automatic slash for ${p.wallet_address}:`, slashErr);
       }
     }
   }

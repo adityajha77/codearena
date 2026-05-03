@@ -9,6 +9,8 @@
     "build": "tsc"
   },
   "dependencies": {
+    "@coral-xyz/anchor": "^0.32.1",
+    "@solana/web3.js": "^1.98.4",
     "@supabase/supabase-js": "^2.39.0",
     "@types/node-cron": "^3.0.11",
     "axios": "^1.6.5",
