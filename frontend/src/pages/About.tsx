@@ -3,6 +3,8 @@ import Footer from "@/components/Footer";
 import Particles from "@/components/Particles";
 import ScrollReveal from "@/components/ScrollReveal";
 import mascotImg from "@/assets/mascot.png";
+import { ExternalLink, Github, Linkedin, Twitter } from "lucide-react";
+
 
 const About = () => (
   <div className="min-h-screen relative">
@@ -38,6 +40,29 @@ const About = () => (
             </ScrollReveal>
           ))}
         </div>
+
+        <ScrollReveal delay={0.5}>
+          <div className="mt-16 pt-8 border-t border-white/10 text-center">
+            <p className="text-muted-foreground text-sm mb-4">Built with ❤️ for the global coding community.</p>
+            <div className="inline-flex items-center gap-6 p-4 rounded-2xl bg-white/5 border border-white/10">
+              <span className="text-sm font-medium">Developed by Aditya Kumar Jha</span>
+              <div className="flex gap-4">
+                <a href="https://aditya-portfolio-tau.vercel.app/" target="_blank" rel="noreferrer" className="text-muted-foreground hover:text-primary transition-colors">
+                  <ExternalLink size={18} />
+                </a>
+                <a href="https://github.com/adityajha77" target="_blank" rel="noreferrer" className="text-muted-foreground hover:text-primary transition-colors">
+                  <Github size={18} />
+                </a>
+                <a href="https://www.linkedin.com/in/aditya-kumar-jha-72493a319/" target="_blank" rel="noreferrer" className="text-muted-foreground hover:text-primary transition-colors">
+                  <Linkedin size={18} />
+                </a>
+                <a href="https://x.com/KumarAdity7093" target="_blank" rel="noreferrer" className="text-muted-foreground hover:text-primary transition-colors">
+                  <Twitter size={18} />
+                </a>
+              </div>
+            </div>
+          </div>
+        </ScrollReveal>
       </div>
     </section>
     <Footer />

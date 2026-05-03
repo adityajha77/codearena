@@ -1,5 +1,7 @@
 import { Link } from "react-router-dom";
 import mascotImg from "@/assets/mascot.png";
+import { Github, Linkedin, Twitter, Globe } from "lucide-react";
+
 
 const Footer = () => (
   <footer className="border-t border-border/50 bg-card/50 mt-20">
@@ -33,14 +35,23 @@ const Footer = () => (
           </div>
         </div>
         <div>
-          <h4 className="font-semibold mb-3 text-sm">Integrations</h4>
-          <div className="space-y-2 text-sm text-muted-foreground">
-            <span className="block">GitHub</span>
-            <span className="block">LeetCode</span>
-            <span className="block">Codeforces</span>
-            <span className="block">+ more</span>
+          <h4 className="font-semibold mb-3 text-sm">Connect</h4>
+          <div className="flex gap-4">
+            <a href="https://github.com/adityajha77" target="_blank" rel="noreferrer" className="text-muted-foreground hover:text-primary transition-colors">
+              <Github size={20} />
+            </a>
+            <a href="https://x.com/KumarAdity7093" target="_blank" rel="noreferrer" className="text-muted-foreground hover:text-primary transition-colors">
+              <Twitter size={20} />
+            </a>
+            <a href="https://www.linkedin.com/in/aditya-kumar-jha-72493a319/" target="_blank" rel="noreferrer" className="text-muted-foreground hover:text-primary transition-colors">
+              <Linkedin size={20} />
+            </a>
+            <a href="https://aditya-portfolio-tau.vercel.app/" target="_blank" rel="noreferrer" className="text-muted-foreground hover:text-primary transition-colors">
+              <Globe size={20} />
+            </a>
           </div>
         </div>
+
       </div>
       <div className="border-t border-border/50 mt-8 pt-6 text-center text-sm text-muted-foreground">
         © 2026 CodeArena. Built on Solana. Code daily, earn forever.
