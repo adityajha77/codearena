@@ -20,14 +20,14 @@ const getChallengePoolPDA = (challengeId: string) => {
   const cleanId = challengeId.replace(/-/g, '');
   return PublicKey.findProgramAddressSync(
     [Buffer.from("challenge_pool"), Buffer.from(cleanId)],
-    new PublicKey(idl.metadata.address)
+    new PublicKey((idl as any).address)
   )[0];
 };
 
 const getParticipantRecordPDA = (challengePool: PublicKey, userPubkey: PublicKey) => {
   return PublicKey.findProgramAddressSync(
     [Buffer.from("participant"), challengePool.toBuffer(), userPubkey.toBuffer()],
-    new PublicKey(idl.metadata.address)
+    new PublicKey((idl as any).address)
   )[0];
 };
 
