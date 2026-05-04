@@ -21,8 +21,8 @@ Solve a problem every day to maintain your streak and earn your stake back (plus
 ## 📺 Platform Demo
 
 <div align="center">
-  <a href="https://www.youtube.com/watch?v=YOUR_VIDEO_ID_HERE">
-    <img src="https://img.youtube.com/vi/YOUR_VIDEO_ID_HERE/maxresdefault.jpg" alt="CodeArena Demo Video" width="100%">
+  <a href="https://www.youtube.com/watch?v=IhJBxCql9ek">
+    <img src="https://img.youtube.com/vi/IhJBxCql9ek/maxresdefault.jpg" alt="CodeArena Demo Video" width="100%">
   </a>
   <p><i>Click the image above to watch the full platform walkthrough on YouTube!</i></p>
 </div>
