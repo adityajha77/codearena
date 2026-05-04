@@ -37,7 +37,7 @@ export const runReminderCheck = async (force = false) => {
     .or(`last_solved_date.neq.${todayStr},last_solved_date.is.null`);
 
   if (error) {
-    console.error('   DB Error');
+    console.error('   DB Error:', error.message || error);
     return;
   }
 

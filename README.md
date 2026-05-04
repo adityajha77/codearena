@@ -18,6 +18,14 @@
 
 Solve a problem every day to maintain your streak and earn your stake back (plus rewards). Miss a day, and your stake is slashed and distributed to the winners!
 
+## 📺 Platform Demo
+
+<div align="center">
+  <video src="codeArena.mp4" width="100%" controls>
+    Your browser does not support the video tag.
+  </video>
+</div>
+
 ## ⚡ Core Features
 
 - **🌐 Cross-Platform Verification:** Instantly pull your live problem-solving data from **GitHub**, **LeetCode**, and **Codeforces**. The smart verification engine automatically checks your local timezone for strict daily compliance.
