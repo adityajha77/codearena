@@ -20,11 +20,7 @@ Solve a problem every day to maintain your streak and earn your stake back (plus
 
 ## 📺 Platform Demo
 
-<div align="center">
-  <video src="codeArena.mp4" width="100%" controls>
-    Your browser does not support the video tag.
-  </video>
-</div>
+![CodeArena Demo](https://github.com/adityajha77/codearena/raw/main/codeArena.mp4)
 
 ## ⚡ Core Features
 
