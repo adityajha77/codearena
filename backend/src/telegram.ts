@@ -79,14 +79,29 @@ if (bot) {
     }
   });
 
-  bot.launch()
-    .then(() => console.log("🤖 Telegram Bot started!"))
-    .catch((err) => console.error("❌ Failed to start Telegram bot:", err));
+  // Only launch polling if NOT in development, or if specifically forced.
+  // This prevents the 409 Conflict error with your Render deployment.
+  const shouldLaunch = process.env.NODE_ENV === 'production' || process.env.FORCE_BOT_LAUNCH === 'true';
 
-  // Enable graceful stop
-  process.once('SIGINT', () => bot.stop('SIGINT'));
-  process.once('SIGTERM', () => bot.stop('SIGTERM'));
+  if (shouldLaunch) {
+    bot.launch()
+      .then(() => console.log("🤖 Telegram Bot started!"))
+      .catch((err) => {
+        if (err.response?.error_code === 409) {
+          console.warn("⚠️ Telegram Bot Conflict: Another instance is already running. Local instance standing down.");
+        } else {
+          console.error("❌ Failed to start Telegram bot:", err);
+        }
+      });
+
+    // Enable graceful stop
+    process.once('SIGINT', () => bot.stop('SIGINT'));
+    process.once('SIGTERM', () => bot.stop('SIGTERM'));
+  } else {
+    console.log("🤖 Telegram Bot: Local standby mode (Render instance is active).");
+  }
 }
+
 
 export async function sendMessage(chatId: string | number, message: string) {
   if (bot) {
