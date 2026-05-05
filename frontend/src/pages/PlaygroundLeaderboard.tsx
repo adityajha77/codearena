@@ -38,7 +38,11 @@ export default function PlaygroundLeaderboard() {
 
       if (data) {
         // 2. Fetch host profiles to get their names
-        const hostWallets = data.map(d => d.playground_rooms?.host_address).filter(Boolean);
+        const hostWallets = data.map(d => {
+          const room = Array.isArray(d.playground_rooms) ? d.playground_rooms[0] : d.playground_rooms;
+          return room?.host_address;
+        }).filter(Boolean);
+
         const { data: profiles } = await supabase
           .from('user_profiles')
           .select('wallet_address, display_name')
@@ -47,13 +51,16 @@ export default function PlaygroundLeaderboard() {
         const profileMap = new Map(profiles?.map(p => [p.wallet_address, p.display_name]) || []);
 
         // 3. Combine the data
-        const combined = data.map(d => ({
-          ...d,
-          playground_rooms: {
-            ...d.playground_rooms,
-            host_name: profileMap.get(d.playground_rooms?.host_address) || d.playground_rooms?.host_address?.slice(0, 6) + "..."
-          }
-        }));
+        const combined = data.map(d => {
+          const room = Array.isArray(d.playground_rooms) ? d.playground_rooms[0] : d.playground_rooms;
+          return {
+            ...d,
+            playground_rooms: {
+              ...room,
+              host_name: profileMap.get(room?.host_address) || room?.host_address?.slice(0, 6) + "..."
+            }
+          };
+        });
         
         setContests(combined);
       }
