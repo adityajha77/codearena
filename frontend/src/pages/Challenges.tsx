@@ -83,6 +83,8 @@ const Challenges = () => {
           .from('challenge_participants')
           .select(`
             last_solved_date,
+            total_days_solved,
+            is_claimed,
             challenges!fk_challenge (
               id, title, duration, stake, platform
             )
@@ -90,7 +92,13 @@ const Challenges = () => {
           .ilike('wallet_address', walletAddress);
           
         if (participantData) {
-          const myChallenges = participantData.map(p => {
+          const myChallenges = participantData
+            .filter(p => {
+              const c = p.challenges as any;
+              const isFinished = (p.total_days_solved || 0) >= parseInt(c.duration);
+              return !p.is_claimed && !isFinished;
+            })
+            .map(p => {
             const c = p.challenges as any;
             return {
               id: c.id,

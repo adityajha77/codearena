@@ -46,6 +46,8 @@ const Profile = () => {
   const [liveTotalStake, setLiveTotalStake] = useState(0);
   const [joinedCount, setJoinedCount] = useState(0);
   const [totalStrikes, setTotalStrikes] = useState(0);
+  const [totalSaved, setTotalSaved] = useState(0);
+  const [completedChallenges, setCompletedChallenges] = useState<any[]>([]);
 
   const [platformActivity, setPlatformActivity] = useState<Record<string, number>>({});
 
@@ -80,7 +82,8 @@ const Profile = () => {
           total_days_solved,
           strike_count,
           status,
-          challenges!fk_challenge (duration, stake)
+          is_claimed,
+          challenges!fk_challenge (id, title, duration, stake, platform)
         `)
         .ilike('wallet_address', walletAddress);
 
@@ -94,30 +97,44 @@ const Profile = () => {
         const solved = data.reduce((acc, p) => acc + (p.total_days_solved || 0), 0);
         const strikes = data.reduce((acc, p) => acc + (p.strike_count || 0), 0);
         
-        // Calculate total stake based on the challenges they joined
         const stake = data.reduce((acc, p) => {
           const challengeStake = (p.challenges as any)?.stake || 0;
           return acc + Number(challengeStake);
         }, 0);
         
         const wins = data.filter(p => {
-          const duration = (p.challenges as any)?.duration || 0;
+          const challenges = Array.isArray(p.challenges) ? p.challenges[0] : p.challenges;
+          const duration = challenges?.duration || 0;
           return p.total_days_solved >= duration && duration > 0;
-        }).length;
+        });
+
+        const saved = data.reduce((acc, p) => {
+          const challenges = Array.isArray(p.challenges) ? p.challenges[0] : p.challenges;
+          const duration = challenges?.duration || 0;
+          const isFinished = (p.total_days_solved || 0) >= duration && duration > 0;
+          if (isFinished || p.is_claimed) {
+            return acc + Number(challenges?.stake || 0);
+          }
+          return acc;
+        }, 0);
 
         setMaxStreak(streak);
         setTotalSolved(solved);
-        setTotalWins(wins);
+        setTotalWins(wins.length);
         setLiveTotalStake(stake);
+        setTotalSaved(saved);
         setJoinedCount(data.length);
         setTotalStrikes(strikes);
+        setCompletedChallenges(wins.map(w => Array.isArray(w.challenges) ? w.challenges[0] : w.challenges));
       } else {
         setJoinedCount(0);
         setLiveTotalStake(0);
+        setTotalSaved(0);
         setTotalSolved(0);
         setMaxStreak(0);
         setTotalWins(0);
         setTotalStrikes(0);
+        setCompletedChallenges([]);
       }
     };
 
@@ -269,7 +286,15 @@ const Profile = () => {
   const shareToTwitter = () => {
     const solvedCount = totalSolved || 0;
     const streak = maxStreak || 0;
-    const text = `Just hit a major milestone on CodeArena! 🔥\n\n🎯 Problems Solved: ${solvedCount}\n⚡ Best Streak: ${streak} Days\n\nCome join me and start your coding journey! 🚀\n\n#codearena #web3 #coding #100DaysOfCode @codearena`;
+    const websiteUrl = "https://codearena-iota.vercel.app/"; 
+    const text = `Just hit a major milestone on CodeArena! 🔥\n\n🎯 Problems Solved: ${solvedCount}\n⚡ Best Streak: ${streak} Days\n\nJoin me and stake your SOL to stay consistent! 🚀\n\nLink: ${websiteUrl}\n\n#codearena #solana #web3 #coding #100DaysOfCode @codearena`;
+    const url = `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}`;
+    window.open(url, '_blank');
+  };
+
+  const shareWinToTwitter = (challengeTitle: string, platform: string, duration: number) => {
+    const websiteUrl = "https://codearena-iota.vercel.app/"; 
+    const text = `I just SURVIVED the "${challengeTitle}" challenge on CodeArena! 🏆\n\n✅ ${duration} Days of consistent ${platform} activity.\n💰 My stake is safe and my glory is eternal!\n\nJoin the arena and test your discipline: ${websiteUrl}\n\n#codearena #solana #100DaysOfCode #web3 @codearena`;
     const url = `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}`;
     window.open(url, '_blank');
   };
@@ -340,12 +365,13 @@ const Profile = () => {
           </ScrollReveal>
 
           <ScrollReveal>
-            <div className="grid grid-cols-2 md:grid-cols-6 gap-4 mb-8">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
               <AnimatedCounter value={totalSolved} label="Problems Solved" />
               <AnimatedCounter value={maxStreak} label="Best Streak" />
               <AnimatedCounter value={joinedCount} label="Challenges Joined" />
               <AnimatedCounter value={totalWins} label="Challenges Won" />
-              <AnimatedCounter value={liveTotalStake} label="SOL Staked" duration={1.5} />
+              <AnimatedCounter value={totalSaved} label="Total SOL Saved" duration={2} />
+              <AnimatedCounter value={liveTotalStake} label="Live Stake" duration={1.5} />
               <div className={`p-4 rounded-2xl border transition-all ${totalStrikes > 0 ? "bg-orange-500/10 border-orange-500/30 shadow-[0_0_15px_rgba(249,115,22,0.1)]" : "glass-card border-white/5"}`}>
                  <div className="text-[10px] uppercase tracking-widest text-muted-foreground mb-1 font-bold">Active Strikes</div>
                  <div className={`text-2xl font-bold font-display ${totalStrikes > 0 ? "text-orange-500" : "text-foreground"}`}>
@@ -359,6 +385,53 @@ const Profile = () => {
             <div className="glass-card rounded-2xl p-6 mb-8 overflow-x-auto">
               <h2 className="text-lg font-bold font-display mb-4">Streak Calendar</h2>
               <StreakHeatmap weeks={52} activityMap={{ ...platformActivity, ...dailyActivity }} />
+            </div>
+          </ScrollReveal>
+
+          <ScrollReveal>
+            <div className="glass-card rounded-2xl p-6 mb-8">
+              <div className="flex items-center justify-between mb-6">
+                <div>
+                  <h2 className="text-xl font-bold font-display">The Hall of Glory</h2>
+                  <p className="text-xs text-muted-foreground mt-1 text-primary italic">"Victory belongs to the most persevering."</p>
+                </div>
+                <div className="px-3 py-1 rounded-full bg-yellow-500/10 border border-yellow-500/20 text-yellow-500 text-[10px] font-bold uppercase tracking-widest">
+                  {completedChallenges.length} Victories
+                </div>
+              </div>
+
+              {completedChallenges.length === 0 ? (
+                <div className="py-12 flex flex-col items-center justify-center border-2 border-dashed border-white/5 rounded-xl bg-white/[0.02]">
+                  <div className="text-4xl mb-3 opacity-20">🛡️</div>
+                  <p className="text-sm text-muted-foreground">No completed challenges yet. Time to stake and prove your worth!</p>
+                </div>
+              ) : (
+                <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {completedChallenges.map((c, idx) => (
+                    <motion.div 
+                      key={c.id || idx}
+                      whileHover={{ scale: 1.02 }}
+                      className="p-4 rounded-xl bg-gradient-to-br from-yellow-500/5 to-transparent border border-yellow-500/20 flex flex-col justify-between"
+                    >
+                      <div>
+                        <div className="flex justify-between items-start mb-2">
+                          <span className="text-[10px] font-mono text-yellow-500/70">{c.platform}</span>
+                          <span className="text-[10px] bg-yellow-500/20 text-yellow-500 px-2 py-0.5 rounded-full font-bold">WINNER</span>
+                        </div>
+                        <h3 className="font-bold text-sm mb-1 line-clamp-1">{c.title}</h3>
+                        <p className="text-[10px] text-muted-foreground mb-4">{c.duration} Day Discipline</p>
+                      </div>
+                      <button 
+                        onClick={() => shareWinToTwitter(c.title, c.platform, c.duration)}
+                        className="w-full py-2 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-[10px] font-bold flex items-center justify-center gap-2 transition-all"
+                      >
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.045 4.126H5.078z"/></svg>
+                        Brag on Twitter
+                      </button>
+                    </motion.div>
+                  ))}
+                </div>
+              )}
             </div>
           </ScrollReveal>
 

@@ -15,25 +15,47 @@ export default function ActiveChallengeCard({ challenge }: { challenge: SolChall
 
   const isSolvedToday = challenge.lastSolvedDate === new Date().toISOString().split('T')[0];
 
-  const [dbStatus, setDbStatus] = useState({ strikes: 0, status: 'Active', totalSolved: 0, isClaimed: false });
+  const [dbStatus, setDbStatus] = useState({ 
+    strikes: 0, 
+    status: 'Active', 
+    totalSolved: 0, 
+    isClaimed: false,
+    allClaimed: false 
+  });
 
   useEffect(() => {
     const fetchStatus = async () => {
       if (!useUserStore.getState().walletAddress) return;
-      const { data } = await supabase
+      
+      // 1. Fetch current user status
+      const { data: myData } = await supabase
         .from('challenge_participants')
         .select('strike_count, status, total_days_solved, is_claimed')
         .eq('challenge_id', challenge.id)
         .eq('wallet_address', useUserStore.getState().walletAddress)
         .single();
       
-      if (data) {
+      // 2. Fetch global challenge status (have all friends claimed?)
+      const { data: allParts } = await supabase
+        .from('challenge_participants')
+        .select('is_claimed')
+        .eq('challenge_id', challenge.id);
+
+      const allClaimed = allParts && allParts.length > 0 && allParts.every(p => p.is_claimed);
+
+      if (myData) {
         setDbStatus({ 
-          strikes: data.strike_count || 0, 
-          status: data.status || 'Active',
-          totalSolved: data.total_days_solved || 0,
-          isClaimed: data.is_claimed || false
+          strikes: myData.strike_count || 0, 
+          status: myData.status || 'Active',
+          totalSolved: myData.total_days_solved || 0,
+          isClaimed: myData.is_claimed || false,
+          allClaimed: !!allClaimed
         });
+
+        // 3. If everyone claimed, update global challenge status to Finished
+        if (allClaimed) {
+          await supabase.from('challenges').update({ status: 'Finished' }).eq('id', challenge.id);
+        }
       }
     };
     fetchStatus();
@@ -128,6 +150,47 @@ export default function ActiveChallengeCard({ challenge }: { challenge: SolChall
     }
   };
 
+  const renderStatusCard = () => {
+    if (dbStatus.allClaimed) {
+      return (
+        <div className="py-8 w-full bg-gradient-to-br from-green-500/20 to-emerald-500/20 rounded-xl border border-green-500/40 flex flex-col items-center shadow-[0_0_30px_rgba(34,197,94,0.15)] animate-in fade-in duration-700">
+          <div className="text-5xl mb-3">🥳</div>
+          <p className="text-2xl font-black text-green-400 mb-1 tracking-tighter">CHALLENGE OVER!</p>
+          <p className="text-sm font-bold text-emerald-500 mb-2">EVERYONE IS A WINNER</p>
+          <p className="text-xs text-white/60 px-8 text-center leading-relaxed">
+            Total success! All participants have claimed their rewards. This challenge is now archived in your glory history.
+          </p>
+        </div>
+      );
+    }
+
+    if (isChallengeCompleted) {
+      return (
+        <div className="py-8 w-full bg-yellow-500/10 rounded-xl border border-yellow-500/30 flex flex-col items-center animate-in zoom-in-95 duration-500">
+          <div className="text-4xl mb-2">{dbStatus.isClaimed ? "💰" : "🏆"}</div>
+          <p className="text-xl font-black text-yellow-500 mb-1">
+            {dbStatus.isClaimed ? "REWARD CLAIMED!" : "CHALLENGE COMPLETED!"}
+          </p>
+          <p className="text-xs text-yellow-400/80 px-6 text-center leading-relaxed">
+            {dbStatus.isClaimed 
+              ? "The challenge is over and your SOL has been successfully transferred to your wallet. Great work!" 
+              : `Congratulations! You've successfully finished all ${challenge.duration || challenge.days || ''} days. Your stake and rewards are ready to be claimed!`}
+          </p>
+        </div>
+      );
+    }
+
+    if (dbStatus.strikes > 0 && dbStatus.status !== 'Eliminated') {
+      return (
+        <div className="w-full bg-orange-500/20 py-2 rounded-lg border border-orange-500/40 text-[11px] font-bold text-orange-400 uppercase tracking-widest animate-pulse">
+          🚨 50% Penalty Applied
+        </div>
+      );
+    }
+
+    return null;
+  };
+
   return (
     <>
       <motion.div 
@@ -151,23 +214,9 @@ export default function ActiveChallengeCard({ challenge }: { challenge: SolChall
           {challenge.title}
         </h3>
 
-        {isChallengeCompleted ? (
-          <div className="py-8 w-full bg-yellow-500/10 rounded-xl border border-yellow-500/30 flex flex-col items-center animate-in zoom-in-95 duration-500">
-            <div className="text-4xl mb-2">{dbStatus.isClaimed ? "💰" : "🏆"}</div>
-            <p className="text-xl font-black text-yellow-500 mb-1">{dbStatus.isClaimed ? "REWARD CLAIMED!" : "CHALLENGE COMPLETED!"}</p>
-            <p className="text-xs text-yellow-400/80 px-6 text-center leading-relaxed">
-              {dbStatus.isClaimed 
-                ? "The challenge is over and your SOL has been successfully transferred to your wallet. Great work!" 
-                : "Congratulations! You've successfully finished all " + challenge.days + " days. Your stake and rewards are ready to be claimed!"}
-            </p>
-          </div>
-        ) : dbStatus.strikes > 0 && dbStatus.status !== 'Eliminated' && (
-           <div className="w-full bg-orange-500/20 py-2 rounded-lg border border-orange-500/40 text-[11px] font-bold text-orange-400 uppercase tracking-widest animate-pulse">
-              🚨 50% Penalty Applied
-           </div>
-        )}
+        {renderStatusCard()}
 
-        {!isChallengeCompleted && (
+        {!isChallengeCompleted && !dbStatus.allClaimed && (
           <>
             {isSolvedToday ? (
               <div className="py-6 w-full bg-green-500/10 rounded-xl border border-green-500/20">
