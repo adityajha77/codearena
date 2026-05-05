@@ -12,6 +12,9 @@ export default defineConfig(({ mode }) => ({
     },
   },
   plugins: [react()],
+  define: {
+    global: "window",
+  },
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
