@@ -29,15 +29,12 @@ Solve a problem every day to maintain your streak and earn your stake back (plus
 
 ## ⚡ Core Features
 
-- **🌐 Cross-Platform Verification:** Instantly pull your live problem-solving data from **GitHub**, **LeetCode**, and **Codeforces**. The smart verification engine automatically checks your local timezone for strict daily compliance.
-- **⚔️ Challenge Modes:**
-  - **Global Community:** Compete against the world. Anyone can join, stake SOL, and fight for the top of the leaderboard.
-  - **Private / Friends:** Create custom, invite-only challenges. Invite friends directly via their Solana wallet addresses.
-  - **Solo Mode:** Bet against yourself. Purely private habit tracking.
-- **🔔 Real-Time Notification Engine:** Receive live, on-screen notifications when a friend invites you to a challenge. Join the stake with a single click, and the notification automatically clears itself!
-- **📊 Dynamic Real-Time Profiles:** Your profile instantly syncs with the database. Watch your "SOL Staked", "Challenges Joined", and "Win Rate" update in real-time as you navigate the platform.
-- **🧾 Transaction History:** A dedicated ledger tracking every single deposit, stake, and payout linked directly to the Solana Devnet via Solscan.
-- **🏆 Live Leaderboard:** See who holds the highest streak across all Global Community challenges.
+- **🏆 The Hall of Glory:** A permanent record of achievement. Only users who complete 100% of their challenge days earn a spot in this golden history.
+- **💰 SOL Saved Tracker:** A new premium statistic that tracks exactly how much SOL a user has successfully protected and claimed back through their consistency.
+- **🥳 Global Group Victory:** Smart detection for multi-participant challenges. When every participant finishes and claims, the challenge transforms into a "Group Victory" celebration state for everyone.
+- **🛡️ Visual Penalty Feedback:** Real-time on-screen alerts for strikes and slashes. Users can see their "Protected", "Slashed (50%)", or "Eliminated" status instantly on their dashboard.
+- **🔗 Viral Social Hooks:** One-click Twitter sharing for both individual milestones and overall Hall of Glory collections, with embedded platform links to drive growth.
+- **🌐 Cross-Platform Verification:** Instantly pull your live problem-solving data from **GitHub**, **LeetCode**, and **Codeforces**. 
 
 ## 🤖 Social & Automation
 - **📱 Telegram Bot Integration:** Connect your Telegram account to receive automated alerts! The backend Node.js server runs a persistent cron job scheduler to send you daily reminders before the clock strikes midnight, and alerts you instantly if your stake gets slashed.
