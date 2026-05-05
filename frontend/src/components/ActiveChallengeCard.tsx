@@ -15,12 +15,38 @@ export default function ActiveChallengeCard({ challenge }: { challenge: SolChall
 
   const isSolvedToday = challenge.lastSolvedDate === new Date().toISOString().split('T')[0];
 
+  const [dbStatus, setDbStatus] = useState({ strikes: 0, status: 'Active', totalSolved: 0, isClaimed: false });
+
   useEffect(() => {
+    const fetchStatus = async () => {
+      if (!useUserStore.getState().walletAddress) return;
+      const { data } = await supabase
+        .from('challenge_participants')
+        .select('strike_count, status, total_days_solved, is_claimed')
+        .eq('challenge_id', challenge.id)
+        .eq('wallet_address', useUserStore.getState().walletAddress)
+        .single();
+      
+      if (data) {
+        setDbStatus({ 
+          strikes: data.strike_count || 0, 
+          status: data.status || 'Active',
+          totalSolved: data.total_days_solved || 0,
+          isClaimed: data.is_claimed || false
+        });
+      }
+    };
+    fetchStatus();
+  }, [challenge.id]);
+
+  const isChallengeCompleted = dbStatus.totalSolved >= challenge.days;
+
+  useEffect(() => {
+    if (isChallengeCompleted) return;
     const timer = setInterval(() => {
       const now = new Date();
-      // Calculate time until next midnight UTC or local. Let's use local midnight.
       const midnight = new Date();
-      midnight.setHours(24, 0, 0, 0); // Next 12 AM
+      midnight.setHours(24, 0, 0, 0); 
 
       const diff = midnight.getTime() - now.getTime();
 
@@ -61,7 +87,6 @@ export default function ActiveChallengeCard({ challenge }: { challenge: SolChall
         yesterday.setDate(yesterday.getDate() - 1);
         const yesterdayStr = yesterday.toISOString().split('T')[0];
         
-        // 1. Fetch current participant data to calculate streak
         const { data: partData } = await supabase
           .from('challenge_participants')
           .select('current_streak, total_days_solved, last_solved_date')
@@ -74,11 +99,10 @@ export default function ActiveChallengeCard({ challenge }: { challenge: SolChall
           if (partData.last_solved_date === yesterdayStr) {
             newStreak = (partData.current_streak || 0) + 1;
           } else if (partData.last_solved_date === todayStr) {
-            newStreak = partData.current_streak || 1; // Already solved today
+            newStreak = partData.current_streak || 1; 
           }
         }
 
-        // 2. Update database with speed and streak info
         const { error: dbError } = await supabase
           .from('challenge_participants')
           .update({ 
@@ -106,33 +130,73 @@ export default function ActiveChallengeCard({ challenge }: { challenge: SolChall
 
   return (
     <>
-      <motion.div whileHover={{ y: -4 }} className="glass-card rounded-2xl p-6 border border-primary/20 shadow-xl shadow-primary/5 bg-primary/5 flex flex-col items-center text-center space-y-4">
+      <motion.div 
+        whileHover={{ y: -4 }} 
+        className={`glass-card rounded-2xl p-6 border transition-all shadow-xl flex flex-col items-center text-center space-y-4 ${
+          dbStatus.status === 'Eliminated' 
+          ? "bg-red-950/40 border-red-500/50 shadow-red-500/10" 
+          : dbStatus.strikes > 0 
+          ? "bg-orange-950/20 border-orange-500/50 shadow-orange-500/10" 
+          : "bg-primary/5 border-primary/20 shadow-primary/5"
+        }`}
+      >
         <div className="w-full flex justify-between items-center text-xs font-mono text-muted-foreground border-b border-border/50 pb-2">
           <span>Target: <span className="font-bold text-foreground">{challenge.platform}</span></span>
-          <span>Active Challenge</span>
+          <span className={dbStatus.strikes > 0 ? "text-orange-500 font-bold" : ""}>
+            {dbStatus.status === 'Eliminated' ? "ELIMINATED" : dbStatus.strikes > 0 ? "⚠️ SLASHED" : "Active Challenge"}
+          </span>
         </div>
 
-        <h3 className="text-xl font-bold font-display text-foreground">{challenge.title}</h3>
+        <h3 className={`text-xl font-bold font-display ${isChallengeCompleted ? "text-yellow-500" : dbStatus.status === 'Eliminated' ? "text-red-500" : "text-foreground"}`}>
+          {challenge.title}
+        </h3>
 
-        {isSolvedToday ? (
-          <div className="py-6 w-full bg-green-500/10 rounded-xl border border-green-500/20">
-            <p className="text-lg font-bold text-green-500 mb-1">Solved for today! 🎉</p>
-            <p className="text-sm text-green-400/80">See you tomorrow, you saved your solana today.</p>
+        {isChallengeCompleted ? (
+          <div className="py-8 w-full bg-yellow-500/10 rounded-xl border border-yellow-500/30 flex flex-col items-center animate-in zoom-in-95 duration-500">
+            <div className="text-4xl mb-2">{dbStatus.isClaimed ? "💰" : "🏆"}</div>
+            <p className="text-xl font-black text-yellow-500 mb-1">{dbStatus.isClaimed ? "REWARD CLAIMED!" : "CHALLENGE COMPLETED!"}</p>
+            <p className="text-xs text-yellow-400/80 px-6 text-center leading-relaxed">
+              {dbStatus.isClaimed 
+                ? "The challenge is over and your SOL has been successfully transferred to your wallet. Great work!" 
+                : "Congratulations! You've successfully finished all " + challenge.days + " days. Your stake and rewards are ready to be claimed!"}
+            </p>
           </div>
-        ) : (
-          <>
-            <div className="py-4 w-full bg-black/20 rounded-xl">
-              <p className="text-xs text-muted-foreground uppercase tracking-widest mb-1">Time Left Today</p>
-              <p className="text-3xl font-mono text-accent font-bold tracking-tight">{timeLeft || "00:00:00"}</p>
-            </div>
+        ) : dbStatus.strikes > 0 && dbStatus.status !== 'Eliminated' && (
+           <div className="w-full bg-orange-500/20 py-2 rounded-lg border border-orange-500/40 text-[11px] font-bold text-orange-400 uppercase tracking-widest animate-pulse">
+              🚨 50% Penalty Applied
+           </div>
+        )}
 
-            <button
-              onClick={handleVerify}
-              disabled={isVerifying}
-              className="w-full py-3 rounded-xl bg-primary text-primary-foreground font-bold hover:opacity-90 active:scale-[0.98] transition-all disabled:opacity-50"
-            >
-              {isVerifying ? "Checking..." : `Verify Progress on ${challenge.platform}`}
-            </button>
+        {!isChallengeCompleted && (
+          <>
+            {isSolvedToday ? (
+              <div className="py-6 w-full bg-green-500/10 rounded-xl border border-green-500/20">
+                <p className="text-lg font-bold text-green-500 mb-1">Solved for today! 🎉</p>
+                <p className="text-sm text-green-400/80 italic">You saved your SOL today.</p>
+              </div>
+            ) : dbStatus.status === 'Eliminated' ? (
+              <div className="py-6 w-full bg-red-500/10 rounded-xl border border-red-500/20">
+                <p className="text-lg font-bold text-red-500 mb-1">CHALLENGE LOST</p>
+                <p className="text-sm text-red-400/80">You were eliminated after 3 strikes.</p>
+              </div>
+            ) : (
+              <>
+                <div className={`py-4 w-full rounded-xl ${dbStatus.strikes > 0 ? "bg-orange-500/10" : "bg-black/20"}`}>
+                  <p className="text-xs text-muted-foreground uppercase tracking-widest mb-1">Time Left Today</p>
+                  <p className={`text-3xl font-mono font-bold tracking-tight ${dbStatus.strikes > 0 ? "text-orange-500" : "text-accent"}`}>{timeLeft || "00:00:00"}</p>
+                </div>
+
+                <button
+                  onClick={handleVerify}
+                  disabled={isVerifying}
+                  className={`w-full py-3 rounded-xl font-bold transition-all disabled:opacity-50 ${
+                    dbStatus.strikes > 0 ? "bg-orange-500 text-white" : "bg-primary text-primary-foreground"
+                  }`}
+                >
+                  {isVerifying ? "Checking..." : `Verify Progress on ${challenge.platform}`}
+                </button>
+              </>
+            )}
           </>
         )}
 

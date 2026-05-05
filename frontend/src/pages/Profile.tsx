@@ -45,6 +45,7 @@ const Profile = () => {
   const [totalWins, setTotalWins] = useState(0);
   const [liveTotalStake, setLiveTotalStake] = useState(0);
   const [joinedCount, setJoinedCount] = useState(0);
+  const [totalStrikes, setTotalStrikes] = useState(0);
 
   const [platformActivity, setPlatformActivity] = useState<Record<string, number>>({});
 
@@ -77,6 +78,8 @@ const Profile = () => {
         .select(`
           current_streak, 
           total_days_solved,
+          strike_count,
+          status,
           challenges!fk_challenge (duration, stake)
         `)
         .ilike('wallet_address', walletAddress);
@@ -89,6 +92,7 @@ const Profile = () => {
       if (data && data.length > 0) {
         const streak = Math.max(...data.map(p => p.current_streak || 0));
         const solved = data.reduce((acc, p) => acc + (p.total_days_solved || 0), 0);
+        const strikes = data.reduce((acc, p) => acc + (p.strike_count || 0), 0);
         
         // Calculate total stake based on the challenges they joined
         const stake = data.reduce((acc, p) => {
@@ -106,12 +110,14 @@ const Profile = () => {
         setTotalWins(wins);
         setLiveTotalStake(stake);
         setJoinedCount(data.length);
+        setTotalStrikes(strikes);
       } else {
         setJoinedCount(0);
         setLiveTotalStake(0);
         setTotalSolved(0);
         setMaxStreak(0);
         setTotalWins(0);
+        setTotalStrikes(0);
       }
     };
 
@@ -334,12 +340,18 @@ const Profile = () => {
           </ScrollReveal>
 
           <ScrollReveal>
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-8">
+            <div className="grid grid-cols-2 md:grid-cols-6 gap-4 mb-8">
               <AnimatedCounter value={totalSolved} label="Problems Solved" />
               <AnimatedCounter value={maxStreak} label="Best Streak" />
               <AnimatedCounter value={joinedCount} label="Challenges Joined" />
               <AnimatedCounter value={totalWins} label="Challenges Won" />
               <AnimatedCounter value={liveTotalStake} label="SOL Staked" duration={1.5} />
+              <div className={`p-4 rounded-2xl border transition-all ${totalStrikes > 0 ? "bg-orange-500/10 border-orange-500/30 shadow-[0_0_15px_rgba(249,115,22,0.1)]" : "glass-card border-white/5"}`}>
+                 <div className="text-[10px] uppercase tracking-widest text-muted-foreground mb-1 font-bold">Active Strikes</div>
+                 <div className={`text-2xl font-bold font-display ${totalStrikes > 0 ? "text-orange-500" : "text-foreground"}`}>
+                    {totalStrikes}
+                 </div>
+              </div>
             </div>
           </ScrollReveal>
 

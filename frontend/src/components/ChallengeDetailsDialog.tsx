@@ -32,11 +32,15 @@ export default function ChallengeDetailsDialog({ isOpen, onClose, challenge }: a
     
     const fetchParticipants = async () => {
       setLoading(true);
-      // Fetch participants
+      // Fetch participants with real DB status
       const { data: pData, error } = await supabase
         .from('challenge_participants')
         .select(`
-          wallet_address
+          wallet_address,
+          strike_count,
+          status,
+          last_slashed_date,
+          is_claimed
         `)
         .eq('challenge_id', challenge.id);
         
@@ -47,16 +51,13 @@ export default function ChallengeDetailsDialog({ isOpen, onClose, challenge }: a
       }
 
       const today = new Date();
-      // Assume challenge started from created_at
       const startDate = new Date(challenge.created_at || new Date());
       let daysElapsed = Math.floor((today.getTime() - startDate.getTime()) / (1000 * 3600 * 24));
       
-      // Apply simulation offset
       daysElapsed += simulationDaysOffset;
       if (daysElapsed < 0) daysElapsed = 0;
 
       const processed = await Promise.all((pData || []).map(async (p: any) => {
-        // Fetch handle for this user
         const { data: uData } = await supabase
           .from('user_profiles')
           .select('*')
@@ -66,9 +67,6 @@ export default function ChallengeDetailsDialog({ isOpen, onClose, challenge }: a
         let platformMap: string = "github";
         if (challenge.platform === 'LeetCode') platformMap = 'leetcode';
         if (challenge.platform === 'Codeforces') platformMap = 'codeforces';
-        if (challenge.platform === 'HackerRank') platformMap = 'hackerrank';
-        if (challenge.platform === 'CodeChef') platformMap = 'codechef';
-        if (challenge.platform === 'AtCoder') platformMap = 'atcoder';
 
         const handle = uData?.[platformMap];
         
@@ -77,16 +75,19 @@ export default function ChallengeDetailsDialog({ isOpen, onClose, challenge }: a
            if (platformMap === 'github') history = await getGitHubActivity(handle);
            else if (platformMap === 'leetcode') history = await getLeetCodeActivity(handle);
            else if (platformMap === 'codeforces') history = await getCodeforcesActivity(handle);
-           // For others, mock history for UI
            else history = { [toDateString(new Date())]: 1 };
         }
 
         const penaltyResult = calculatePenalty(startDate, daysElapsed, history, !!handle);
 
+        // SOURCE OF TRUTH: Use Database status if it exists, otherwise fallback to calculation
         return {
           wallet: p.wallet_address,
           handle: handle || "Not Linked",
-          ...penaltyResult
+          ...penaltyResult,
+          strike_count: p.strike_count || 0,
+          status: p.status || penaltyResult.status,
+          is_claimed: p.is_claimed || false
         };
       }));
 
@@ -196,8 +197,20 @@ export default function ChallengeDetailsDialog({ isOpen, onClose, challenge }: a
       const signature = await sendTransaction(tx, connection);
       toast.info("Transaction sent. Waiting for confirmation...");
       await connection.confirmTransaction(signature, 'processed');
+      
+      // Update DB to mark as claimed
+      await supabase
+        .from('challenge_participants')
+        .update({ is_claimed: true })
+        .eq('challenge_id', challenge.id)
+        .eq('wallet_address', participantWalletStr);
+
       toast.success("Successfully claimed your reward!");
       
+      // Refresh local UI
+      setParticipants(prev => prev.map(p => 
+        p.wallet === participantWalletStr ? { ...p, is_claimed: true } : p
+      ));
     } catch (error: any) {
       toast.error("Failed to claim payout: " + error.message);
     }
@@ -354,11 +367,11 @@ export default function ChallengeDetailsDialog({ isOpen, onClose, challenge }: a
                   {combinedParticipants.map((p, i) => (
                     <div 
                       key={p.wallet}
-                      className={`p-4 rounded-xl border flex items-center justify-between transition-colors ${
+                      className={`p-4 rounded-xl border flex items-center justify-between transition-all ${
                         p.status === "Eliminated" 
-                          ? "bg-red-500/10 border-red-500/20 opacity-50" 
-                          : p.status === "Strike 1"
-                          ? "bg-yellow-500/10 border-yellow-500/30 shadow-[0_0_15px_rgba(234,179,8,0.15)]"
+                          ? "bg-red-950/40 border-red-500/40 opacity-70" 
+                        : p.strike_count > 0
+                          ? "bg-orange-950/20 border-orange-500/30 shadow-[0_0_15px_rgba(249,115,22,0.1)]"
                           : "bg-white/5 border-white/10"
                       }`}
                     >
@@ -380,14 +393,18 @@ export default function ChallengeDetailsDialog({ isOpen, onClose, challenge }: a
 
                           <div className={`px-4 py-2 rounded-lg flex flex-col items-center justify-center min-w-[120px] font-bold text-sm ${
                              p.status === "Eliminated" 
-                             ? "bg-red-500/20 text-red-500" 
-                             : p.status === "Strike 1"
-                             ? "bg-yellow-500/20 text-yellow-500"
+                             ? "bg-red-600/30 text-red-500 border border-red-500/50 shadow-[0_0_15px_rgba(220,38,38,0.2)]" 
+                             : p.strike_count > 0
+                             ? "bg-orange-500/20 text-orange-500 border border-orange-500/30"
                              : "bg-green-500/20 text-green-500"
                           }`}>
-                             {p.status === "Eliminated" && <><X className="w-4 h-4 mb-1"/> 100% Loss</>}
-                             {p.status === "Strike 1" && <><ShieldAlert className="w-4 h-4 mb-1"/> 50% Penalty</>}
-                             {p.status === "Protected" && <><CheckCircle2 className="w-4 h-4 mb-1"/> Protected</>}
+                             {p.status === "Eliminated" ? (
+                               <><X className="w-4 h-4 mb-1"/> 100% LOSS</>
+                             ) : p.strike_count >= 1 ? (
+                               <><ShieldAlert className="w-4 h-4 mb-1"/> 50% PENALTY</>
+                             ) : (
+                               <><CheckCircle2 className="w-4 h-4 mb-1"/> PROTECTED</>
+                             )}
 
                              {import.meta.env.DEV && (
                                <div className="mt-2 w-full flex flex-col gap-1">
@@ -404,12 +421,18 @@ export default function ChallengeDetailsDialog({ isOpen, onClose, challenge }: a
                                     Slash (On-Chain)
                                  </button>
                                  {publicKey?.toBase58() === p.wallet && (
-                                   <button 
-                                      onClick={(e) => { e.stopPropagation(); claimOnChainPayout(p.wallet); }}
-                                      className="text-[10px] bg-green-500/20 text-green-400 hover:bg-green-500/40 px-2 py-1 rounded w-full border border-green-500/30 active:scale-95 transition-all font-mono mt-1"
-                                   >
-                                      Claim Reward
-                                   </button>
+                                   p.is_claimed ? (
+                                     <div className="text-[10px] bg-green-500/20 text-green-400 px-2 py-1 rounded w-full border border-green-500/30 font-mono mt-1 text-center font-bold">
+                                        ✅ CLAIMED
+                                     </div>
+                                   ) : (
+                                     <button 
+                                        onClick={(e) => { e.stopPropagation(); claimOnChainPayout(p.wallet); }}
+                                        className="text-[10px] bg-green-500/20 text-green-400 hover:bg-green-500/40 px-2 py-1 rounded w-full border border-green-500/30 active:scale-95 transition-all font-mono mt-1"
+                                     >
+                                        Claim Reward
+                                     </button>
+                                   )
                                  )}
                                </div>
                              )}
