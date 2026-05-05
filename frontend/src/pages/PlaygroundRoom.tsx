@@ -49,105 +49,34 @@ export default function PlaygroundRoom() {
   const [activeTestTab, setActiveTestTab] = useState(0);
 
   useEffect(() => {
-    // Fetch room details
-    const fetchRoom = async () => {
+    // 1. Initial Data Fetching (Room details, participants, existing submission)
+    const fetchData = async () => {
       if (!roomId) return;
-      const { data, error } = await supabase
-        .from('playground_rooms')
-        .select('*')
-        .eq('id', roomId)
-        .single();
       
-      if (data) {
-        setRoomData(data);
+      // Fetch Room
+      const { data: room } = await supabase.from('playground_rooms').select('*').eq('id', roomId).single();
+      if (room) {
+        setRoomData(room);
         
-        // Fetch all questions if questions_list exists
-        const questions = data.questions_list || (data.question_repo_url ? [{ 
-          id: data.question_repo_url, 
-          title: data.question_title, 
-          tags: data.question_tags 
-        }] : []);
-
-        const loadedQuestions: any[] = [];
+        // Fetch Questions
+        const questions = room.questions_list || (room.question_repo_url ? [{ id: room.question_repo_url, title: room.question_title }] : []);
+        const loadedQuestions = [];
         for (const q of questions) {
           try {
-            const response = await fetch(`/challenges/${q.id}`);
-            const contentType = response.headers.get("content-type");
-            if (response.ok && contentType && contentType.includes("application/json")) {
-              loadedQuestions.push(await response.json());
-            } else {
-              // Try Supabase fallback
-              const { data: fileData, error: downloadError } = await supabase
-                .storage
-                .from('challenges')
-                .download(q.id);
-              if (!downloadError) {
-                const text = await fileData.text();
-                loadedQuestions.push(JSON.parse(text));
-              }
-            }
-          } catch (e) {
-            console.error("Failed to fetch question data", e);
-          }
+            const res = await fetch(`/challenges/${q.id}`);
+            if (res.ok) loadedQuestions.push(await res.json());
+          } catch (e) { console.error(e); }
         }
         setQuestionDataList(loadedQuestions);
       }
-    };
-    fetchRoom();
 
-    // Auto-join participant logic
-    const joinParticipant = async () => {
-      if (!roomId || !publicKey) return;
-      
-      const { data: existing } = await supabase
-        .from('playground_participants')
-        .select('id')
-        .eq('room_id', roomId)
-        .eq('wallet_address', publicKey.toBase58())
-        .single();
-      
-      if (!existing) {
-        await supabase
-          .from('playground_participants')
-          .insert({
-            room_id: roomId,
-            wallet_address: publicKey.toBase58(),
-            score: 0
-          });
-        await supabase.channel(`playground_presence:${roomId}`).send({
-          type: 'broadcast',
-          event: 'new_participant',
-        });
-      }
-    };
-
-    // Fetch room details and participants with profile names
-    const fetchInitialData = async () => {
-      if (!roomId) return;
-      
-      const { data: room } = await supabase
-        .from('playground_rooms')
-        .select('*')
-        .eq('id', roomId)
-        .single();
-      if (room) setRoomData(room);
-
-      // 1. Fetch participants
-      const { data: parts } = await supabase
-        .from('playground_participants')
-        .select('*')
-        .eq('room_id', roomId);
-      
+      // Fetch Participants & Profiles
+      const { data: parts } = await supabase.from('playground_participants').select('*').eq('room_id', roomId);
       if (parts) {
-        // 2. Fetch profiles for these wallets to get names
         const wallets = parts.map(p => p.wallet_address);
-        const { data: profiles } = await supabase
-          .from('user_profiles')
-          .select('wallet_address, display_name')
-          .in('wallet_address', wallets);
-
+        const { data: profiles } = await supabase.from('user_profiles').select('wallet_address, display_name').in('wallet_address', wallets);
         const profileMap = new Map(profiles?.map(p => [p.wallet_address, p.display_name]) || []);
-
+        
         setParticipants(parts.map((p: any) => ({
           wallet: p.wallet_address,
           name: profileMap.get(p.wallet_address) || p.wallet_address.slice(0, 6) + "...",
@@ -157,176 +86,59 @@ export default function PlaygroundRoom() {
           online: false
         })));
       }
-    };
 
-    // Check if user has already submitted
-    const checkSubmission = async () => {
-      if (!roomId || !publicKey) return;
-      const { data } = await supabase
-        .from('playground_participants')
-        .select('submissions, multi_test_results, code_submission')
-        .eq('room_id', roomId)
-        .eq('wallet_address', publicKey.toBase58())
-        .single();
-      
-      if (data) {
-        if (data.submissions) setCodes(data.submissions);
-        if (data.multi_test_results) setTestResultsMap(data.multi_test_results);
-        if (data.code_submission || (data.submissions && Object.keys(data.submissions).length > 0)) {
-          // In multi-mode, we don't necessarily want to "lock" everything immediately, 
-          // but we can set isSubmitted if appropriate.
-          // For now, let's keep it flexible.
+      // Fetch User's specific submission
+      if (publicKey) {
+        const { data: myPart } = await supabase.from('playground_participants').select('*').eq('room_id', roomId).eq('wallet_address', publicKey.toBase58()).single();
+        if (myPart) {
+          if (myPart.submissions) setCodes(myPart.submissions);
+          if (myPart.multi_test_results) setTestResultsMap(myPart.multi_test_results);
+        } else {
+          // Join if not joined
+          await supabase.from('playground_participants').insert({ room_id: roomId, wallet_address: publicKey.toBase58(), score: 0 });
         }
       }
     };
 
-    fetchInitialData();
-    joinParticipant();
-    checkSubmission();
+    fetchData();
 
-    // Re-fetch after a short delay to ensure host/initial join is captured
-    const timeout = setTimeout(fetchInitialData, 1500);
-    return () => clearTimeout(timeout);
-  }, [roomId, publicKey]);
-
-  useEffect(() => {
-    // Setup Supabase Presence for live "Online" status
+    // 2. Realtime Subscriptions (Presence, Broadcast, Postgres Changes)
     if (!roomId || !publicKey) return;
 
-    const refreshParticipants = async () => {
-      const { data: parts } = await supabase
-        .from('playground_participants')
-        .select('*')
-        .eq('room_id', roomId);
-      
-      if (parts) {
-        const wallets = parts.map(p => p.wallet_address);
-        const { data: profiles } = await supabase
-          .from('user_profiles')
-          .select('wallet_address, display_name')
-          .in('wallet_address', wallets);
+    const channel = supabase.channel(`playground_room:${roomId}`, {
+      config: { presence: { key: publicKey.toBase58() } }
+    });
 
-        const profileMap = new Map(profiles?.map(p => [p.wallet_address, p.display_name]) || []);
-
-        setParticipants(prev => {
-          // Keep online status from prev if available
-          const prevOnlineMap = new Map(prev.map(p => [p.wallet, p.online]));
-          
-          return parts.map((p: any) => ({
-            wallet: p.wallet_address,
-            name: profileMap.get(p.wallet_address) || p.wallet_address.slice(0, 6) + "...",
-            score: p.score,
-            passed: p.test_cases_passed,
-            total: p.total_test_cases,
-            online: prevOnlineMap.get(p.wallet_address) || false
-          }));
-        });
-      }
-    };
-
-    const channel = supabase.channel(`playground_presence:${roomId}`);
     channel
       .on('presence', { event: 'sync' }, () => {
         const state = channel.presenceState();
-        
-        // Extract wallets from presence state
-        const activeWallets: string[] = [];
-        for (const key in state) {
-          const presences = state[key] as any[];
-          presences.forEach(p => {
-            if (p.wallet) activeWallets.push(p.wallet);
-          });
-        }
-        
-        setParticipants(prev => {
-          const knownWallets = new Set(prev.map(p => p.wallet));
-          const hasNewParticipant = activeWallets.some(w => !knownWallets.has(w));
-          
-          if (hasNewParticipant) {
-             // We discovered a new participant via presence! Fetch their DB details
-             setTimeout(refreshParticipants, 100);
-          }
-          
-          return prev.map(p => ({
-            ...p,
-            online: activeWallets.includes(p.wallet)
-          }));
-        });
+        const activeWallets = Object.values(state).flat().map((p: any) => p.wallet);
+        setParticipants(prev => prev.map(p => ({ ...p, online: activeWallets.includes(p.wallet) })));
       })
       .on('broadcast', { event: 'start_challenge' }, (payload) => {
-         setRoomData((prev: any) => prev ? { ...prev, status: 'active', start_time: payload.payload.start_time } : prev);
-         toast.success("Host has started the challenge!");
+        setRoomData((prev: any) => prev ? { ...prev, status: 'active', start_time: payload.payload.start_time } : prev);
+        toast.success("Challenge Started!");
       })
       .on('broadcast', { event: 'room_deleted' }, () => {
-         toast.error("Challenge was cancelled or deleted by the host.");
-         setTimeout(() => {
-           window.location.href = '/playground';
-         }, 1500);
+        toast.error("Challenge deleted by host.");
+        setTimeout(() => window.location.href = '/playground', 1500);
       })
-      .on('broadcast', { event: 'new_participant' }, () => {
-         refreshParticipants();
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'playground_rooms', filter: `id=eq.${roomId}` }, (payload) => {
+        setRoomData(payload.new);
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'playground_participants', filter: `room_id=eq.${roomId}` }, () => {
+        fetchData(); // Refresh participant list on any DB change
       })
       .subscribe(async (status) => {
         if (status === 'SUBSCRIBED') {
-          await channel.track({
-            online_at: new Date().toISOString(),
-            wallet: publicKey.toBase58(),
-            name: displayName,
-          });
+          await channel.track({ wallet: publicKey.toBase58(), name: displayName });
+          // Notify others of new joiner
+          channel.send({ type: 'broadcast', event: 'new_participant', payload: {} });
         }
       });
 
-    // Setup Supabase Postgres listener for room updates (Auto-start)
-    const roomChannel = supabase.channel(`room_updates:${roomId}`)
-      .on(
-        'postgres_changes',
-        { event: 'UPDATE', schema: 'public', table: 'playground_rooms', filter: `id=eq.${roomId}` },
-        (payload) => {
-          setRoomData(payload.new);
-          // If status changed to active, refresh participants to be safe
-          if (payload.new.status === 'active') {
-             toast.success("Host has started the challenge!");
-          }
-        }
-      )
-      .on(
-        'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'playground_participants', filter: `room_id=eq.${roomId}` },
-        () => {
-          // Refresh participants when someone new joins
-          const refreshParticipants = async () => {
-             const { data: parts } = await supabase
-               .from('playground_participants')
-               .select('*')
-               .eq('room_id', roomId);
-             
-             if (parts) {
-                const wallets = parts.map(p => p.wallet_address);
-                const { data: profiles } = await supabase
-                  .from('user_profiles')
-                  .select('wallet_address, display_name')
-                  .in('wallet_address', wallets);
-
-                const profileMap = new Map(profiles?.map(p => [p.wallet_address, p.display_name]) || []);
-
-                setParticipants(parts.map((p: any) => ({
-                  wallet: p.wallet_address,
-                  name: profileMap.get(p.wallet_address) || p.wallet_address.slice(0, 6) + "...",
-                  score: p.score,
-                  passed: p.test_cases_passed,
-                  total: p.total_test_cases,
-                  online: false
-                })));
-             }
-          };
-          refreshParticipants();
-        }
-      )
-      .subscribe();
-
     return () => {
       supabase.removeChannel(channel);
-      supabase.removeChannel(roomChannel);
     };
   }, [roomId, publicKey]);
 
