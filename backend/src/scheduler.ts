@@ -33,15 +33,17 @@ export const runReminderCheck = async (force = false) => {
       wallet_address, 
       last_slashed_date, 
       last_solved_date,
+      last_solved_at,
+      joined_at,
       strike_count, 
+      total_days_solved,
       status,
       is_claimed,
       challenges!fk_challenge (id, title, mode, creator_wallet, beneficiaries, created_at),
       user_profiles!fk_user_profile (telegram_chat_id)
     `)
     .eq('is_claimed', false)
-    .neq('status', 'Eliminated')
-    .or(`last_solved_date.neq.${todayStr},last_solved_date.is.null`);
+    .neq('status', 'Eliminated');
 
   if (error) {
     console.error('   DB Error:', error.message || error);
@@ -58,49 +60,68 @@ export const runReminderCheck = async (force = false) => {
       const profiles = p.user_profiles as any;
       const chatId = Array.isArray(profiles) ? profiles[0]?.telegram_chat_id : profiles?.telegram_chat_id;
 
-      // FIX: Calculate deadline based on 24h since creation OR 24h since last solution
-      const challengeStart = new Date((p.challenges as any).created_at);
-      const lastSolved = p.last_solved_date ? new Date(p.last_solved_date) : challengeStart;
+      // FIXED WINDOW LOGIC: Check anniversaries since join time
+      const joinedAt = p.joined_at ? new Date(p.joined_at) : new Date((p.challenges as any).created_at);
+      const timeSinceJoin = now.getTime() - joinedAt.getTime();
+      const anniversaryCount = Math.floor(timeSinceJoin / (24 * 60 * 60 * 1000));
       
-      // If today is more than 24h since the last check/solution, they are late
-      const deadline = new Date(lastSolved.getTime() + (24 * 60 * 60 * 1000));
-      const hoursRemaining = (deadline.getTime() - now.getTime()) / (1000 * 60 * 60);
+      // The current window ends at:
+      const nextAnniversary = new Date(joinedAt.getTime() + (anniversaryCount + 1) * 24 * 60 * 60 * 1000);
+      const hoursRemaining = (nextAnniversary.getTime() - now.getTime()) / (1000 * 60 * 60);
 
-      // Slashing Logic
-      if (hoursRemaining <= 0 && p.last_slashed_date !== todayStr) {
+      // If they have solved fewer days than anniversaries passed, they are late
+      const totalSolved = p.total_days_solved || 0;
+      const strikesOwed = anniversaryCount - totalSolved;
+      
+      if (strikesOwed > (p.strike_count || 0) && p.last_slashed_date !== todayStr) {
         const beneficiary = (p.challenges as any).mode === 'Self' && (p.challenges as any).beneficiaries?.[0] 
           ? (p.challenges as any).beneficiaries[0] 
           : (p.challenges as any).creator_wallet;
 
-        console.log(`🚀 [SLASH] Attempting on-chain penalty for ${p.wallet_address}...`);
+        console.log(`🚀 [SLASH] Anniversary check failed for ${p.wallet_address}. Owed: ${strikesOwed}, Current: ${p.strike_count}`);
         
         try {
+          const isSeverelyLate = strikesOwed >= 2; 
+          
           await applyPenaltyOnChain((p.challenges as any).id, p.wallet_address, beneficiary);
+          
+          if (isSeverelyLate) {
+            console.log(`   ⚠️ User missed multiple anniversaries. Applying second slash...`);
+            try {
+              await applyPenaltyOnChain((p.challenges as any).id, p.wallet_address, beneficiary);
+            } catch (e) {
+              console.log("   Secondary slash skipped");
+            }
+          }
+
           console.log(`   ✅ Successfully slashed ${p.wallet_address} on-chain!`);
         } catch (onChainErr: any) {
-          // If the error is an overflow, it means the user has 0 balance left. 
-          // We should still mark them as "Slashed" for today so we don't keep trying.
           if (onChainErr.message.includes('overflow') || onChainErr.message.includes('0x1')) {
             console.log(`   ⚠️ Pool empty or already slashed for ${p.wallet_address}. Marking as handled.`);
           } else {
-            throw onChainErr; // Real network error, try again next cycle
+            throw onChainErr;
           }
         }
         
-        // Update database so we don't try again today
-        const newStrikes = (p.strike_count || 0) + 1;
+        // Update database
+        const newStrikes = Math.min(strikesOwed, 2); // 2 strikes max
+        const finalStatus = newStrikes >= 2 ? 'Eliminated' : 'Active';
+
         await supabase
           .from('challenge_participants')
           .update({ 
             strike_count: newStrikes, 
-            status: newStrikes >= 3 ? 'Eliminated' : 'Active', 
+            status: finalStatus, 
             last_slashed_date: todayStr 
           })
           .eq('id', p.id);
         
         slashCount++;
         if (chatId) {
-          await bot.telegram.sendMessage(chatId, `🚨 Day missed! Penalty applied for "${(p.challenges as any).title}". Strikes: ${newStrikes}/3`, { parse_mode: 'Markdown' });
+          const msg = finalStatus === 'Eliminated' 
+            ? `💀 Challenge Lost! You missed 2 days relative to your start time. See you again, you lost the challenge and SOL too.`
+            : `🚨 Day missed! Penalty applied for "${(p.challenges as any).title}". Strikes: ${newStrikes}/2`;
+          await bot.telegram.sendMessage(chatId, msg, { parse_mode: 'Markdown' });
         }
       } else if (hoursRemaining <= 3 && hoursRemaining > 0 && chatId) {
         // Silent Reminders

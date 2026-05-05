@@ -83,10 +83,13 @@ const Challenges = () => {
           .from('challenge_participants')
           .select(`
             last_solved_date,
+            last_solved_at,
+            joined_at,
             total_days_solved,
             is_claimed,
+            status,
             challenges!fk_challenge (
-              id, title, duration, stake, platform
+              id, title, duration, stake, platform, created_at
             )
           `)
           .ilike('wallet_address', walletAddress);
@@ -96,7 +99,7 @@ const Challenges = () => {
             .filter(p => {
               const c = p.challenges as any;
               const isFinished = (p.total_days_solved || 0) >= parseInt(c.duration);
-              return !p.is_claimed && !isFinished;
+              return !p.is_claimed && !isFinished && p.status !== 'Eliminated';
             })
             .map(p => {
             const c = p.challenges as any;
@@ -106,9 +109,10 @@ const Challenges = () => {
               days: parseInt(c.duration),
               stakeAmount: parseFloat(c.stake),
               isActive: true,
-              startDate: new Date(), 
+              startDate: new Date(p.joined_at || c.created_at), 
               platform: c.platform,
               lastSolvedDate: p.last_solved_date || undefined,
+              lastSolvedAt: p.last_solved_at || undefined,
               userWallet: walletAddress
             };
           });
@@ -459,7 +463,7 @@ const Challenges = () => {
                     {c.myStatus === "Eliminated" ? (
                       <div className="flex flex-col items-center justify-center py-6 mt-4 border-t border-red-500/20 bg-red-500/10 rounded-xl space-y-2">
                          <div className="text-red-500 font-black text-2xl tracking-tighter italic">YOU LOST</div>
-                         <div className="text-red-400/80 text-[11px] text-center px-4 leading-tight">You missed too many daily goals and your stake has been partially slashed.</div>
+                         <div className="text-red-400/80 text-[11px] text-center px-4 leading-tight">See you again, you looses the challenge and SOL too.</div>
                       </div>
                     ) : (
                       <div className="grid grid-cols-3 gap-2 py-4 mt-auto border-t border-white/5 font-mono text-sm">

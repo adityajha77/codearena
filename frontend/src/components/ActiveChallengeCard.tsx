@@ -1,4 +1,5 @@
 import { motion } from "framer-motion";
+import { CheckCircle2 } from "lucide-react";
 import { SolChallenge } from "@/store/userStore";
 import { useState, useEffect } from "react";
 import { checkActivityToday } from "@/lib/api/platforms";
@@ -64,13 +65,20 @@ export default function ActiveChallengeCard({ challenge }: { challenge: SolChall
   const isChallengeCompleted = dbStatus.totalSolved >= challenge.days;
 
   useEffect(() => {
-    if (isChallengeCompleted) return;
+    if (isChallengeCompleted || isSolvedToday) return;
+    
     const timer = setInterval(() => {
       const now = new Date();
-      const midnight = new Date();
-      midnight.setHours(24, 0, 0, 0); 
+      // Fair Timer: Countdown from (last solve OR start date) + 24 hours
+      const lastAction = challenge.lastSolvedAt ? new Date(challenge.lastSolvedAt) : new Date(challenge.startDate);
+      const deadline = new Date(lastAction.getTime() + (24 * 60 * 60 * 1000));
 
-      const diff = midnight.getTime() - now.getTime();
+      const diff = deadline.getTime() - now.getTime();
+
+      if (diff <= 0) {
+        setTimeLeft("00:00:00");
+        return;
+      }
 
       const h = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
       const m = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
@@ -79,7 +87,7 @@ export default function ActiveChallengeCard({ challenge }: { challenge: SolChall
       setTimeLeft(`${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`);
     }, 1000);
     return () => clearInterval(timer);
-  }, []);
+  }, [challenge.lastSolvedAt, challenge.startDate, isChallengeCompleted, isSolvedToday]);
 
   const getHandleForPlatform = () => {
     switch (challenge.platform) {
@@ -174,7 +182,7 @@ export default function ActiveChallengeCard({ challenge }: { challenge: SolChall
           <p className="text-xs text-yellow-400/80 px-6 text-center leading-relaxed">
             {dbStatus.isClaimed 
               ? "The challenge is over and your SOL has been successfully transferred to your wallet. Great work!" 
-              : `Congratulations! You've successfully finished all ${challenge.duration || challenge.days || ''} days. Your stake and rewards are ready to be claimed!`}
+              : `Congratulations! You've successfully finished all ${challenge.days} days. Your stake and rewards are ready to be claimed!`}
           </p>
         </div>
       );
@@ -183,7 +191,7 @@ export default function ActiveChallengeCard({ challenge }: { challenge: SolChall
     if (dbStatus.strikes > 0 && dbStatus.status !== 'Eliminated') {
       return (
         <div className="w-full bg-orange-500/20 py-2 rounded-lg border border-orange-500/40 text-[11px] font-bold text-orange-400 uppercase tracking-widest animate-pulse">
-          🚨 50% Penalty Applied
+          🚨 50% Penalty Applied (1/2 Strikes)
         </div>
       );
     }
@@ -219,14 +227,31 @@ export default function ActiveChallengeCard({ challenge }: { challenge: SolChall
         {!isChallengeCompleted && !dbStatus.allClaimed && (
           <>
             {isSolvedToday ? (
-              <div className="py-6 w-full bg-green-500/10 rounded-xl border border-green-500/20">
-                <p className="text-lg font-bold text-green-500 mb-1">Solved for today! 🎉</p>
-                <p className="text-sm text-green-400/80 italic">You saved your SOL today.</p>
+              <div className="py-8 w-full bg-gradient-to-br from-green-500/10 to-emerald-500/10 rounded-2xl border border-green-500/20 shadow-[0_0_20px_rgba(34,197,94,0.1)] flex flex-col items-center">
+                <div className="bg-green-500/20 p-2 rounded-full mb-3">
+                  <CheckCircle2 className="w-8 h-8 text-green-500" />
+                </div>
+                <p className="text-xl font-black text-green-500 mb-2 tracking-tight">YOU ARE SAFE!</p>
+                <p className="text-sm text-green-400/80 px-6 leading-relaxed mb-4">
+                  Sit back, relax, and prepare well. Your SOL is protected for this cycle.
+                </p>
+                <div className="px-4 py-2 bg-black/30 rounded-lg border border-white/5">
+                  <p className="text-[10px] uppercase tracking-widest text-muted-foreground mb-1">Next Cycle Starts At</p>
+                  <p className="text-sm font-mono font-bold text-foreground">
+                    {(() => {
+                      const joinedAt = new Date(challenge.startDate);
+                      const now = new Date();
+                      const anniversaryCount = Math.floor((now.getTime() - joinedAt.getTime()) / (24 * 60 * 60 * 1000));
+                      const nextReset = new Date(joinedAt.getTime() + (anniversaryCount + 1) * 24 * 60 * 60 * 1000);
+                      return nextReset.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                    })()}
+                  </p>
+                </div>
               </div>
             ) : dbStatus.status === 'Eliminated' ? (
-              <div className="py-6 w-full bg-red-500/10 rounded-xl border border-red-500/20">
+              <div className="py-6 w-full bg-red-500/10 rounded-xl border border-red-500/20 px-4">
                 <p className="text-lg font-bold text-red-500 mb-1">CHALLENGE LOST</p>
-                <p className="text-sm text-red-400/80">You were eliminated after 3 strikes.</p>
+                <p className="text-sm text-red-400/80 leading-tight">See you again, you looses the challenge and SOL too.</p>
               </div>
             ) : (
               <>

@@ -10,6 +10,7 @@ export interface SolChallenge {
   startDate: Date;
   platform: 'GitHub' | 'LeetCode' | 'Codeforces';
   lastSolvedDate?: string;
+  lastSolvedAt?: string;
   userWallet?: string;
 }
 
@@ -78,7 +79,7 @@ export const useUserStore = create<UserState>()(
       
       markChallengeSolvedToday: (challengeId, dateStr) => set((state) => {
         const updatedChallenges = state.activeChallenges.map(c => 
-          c.id === challengeId ? { ...c, lastSolvedDate: dateStr } : c
+          c.id === challengeId ? { ...c, lastSolvedDate: dateStr, lastSolvedAt: new Date().toISOString() } : c
         );
         
         const updatedActivity = { ...state.dailyActivity };
