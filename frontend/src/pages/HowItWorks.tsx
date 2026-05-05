@@ -9,8 +9,10 @@ const steps = [
   { num: "02", title: "Connect Platforms", desc: "Link GitHub (required) + LeetCode, Codeforces, HackerRank, and more.", icon: "🔗" },
   { num: "03", title: "Create or Join", desc: "Pick self, friend, or community challenge. Set duration & stake.", icon: "🎯" },
   { num: "04", title: "Code Daily", desc: "Make commits, solve problems, stay active across platforms.", icon: "⌨️" },
-  { num: "05", title: "Keep Your Streak", desc: "Miss a day? You're at risk. Miss two? You're out.", icon: "🔥" },
-  { num: "06", title: "Earn Rewards", desc: "Survivors split the pool. Consistency pays.", icon: "💰" },
+  { num: "05", title: "Telegram Reminders", desc: "Connect our Telegram bot for automated daily reminders 3h, 2h, and 1h before deadlines.", icon: "🤖" },
+  { num: "06", title: "Twitter Rep", desc: "Share your streaks and challenge wins on Twitter to build your on-chain reputation.", icon: "🐦" },
+  { num: "07", title: "Keep Your Streak", desc: "Miss a day? You're at risk. Miss two? You're out and your SOL is slashed.", icon: "🔥" },
+  { num: "08", title: "Earn Rewards", desc: "Survivors split the pool. Consistency pays in SOL rewards.", icon: "💰" },
 ];
 
 const HowItWorks = () => (

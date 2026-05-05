@@ -1,5 +1,5 @@
 import { motion } from "framer-motion";
-import { CheckCircle2 } from "lucide-react";
+import { CheckCircle2, Twitter } from "lucide-react";
 import { SolChallenge } from "@/store/userStore";
 import { useState, useEffect } from "react";
 import { checkActivityToday } from "@/lib/api/platforms";
@@ -235,7 +235,7 @@ export default function ActiveChallengeCard({ challenge }: { challenge: SolChall
                 <p className="text-sm text-green-400/80 px-6 leading-relaxed mb-4">
                   Sit back, relax, and prepare well. Your SOL is protected for this cycle.
                 </p>
-                <div className="px-4 py-2 bg-black/30 rounded-lg border border-white/5">
+                <div className="px-4 py-2 bg-black/30 rounded-lg border border-white/5 mb-4">
                   <p className="text-[10px] uppercase tracking-widest text-muted-foreground mb-1">Next Cycle Starts At</p>
                   <p className="text-sm font-mono font-bold text-foreground">
                     {(() => {
@@ -246,6 +246,18 @@ export default function ActiveChallengeCard({ challenge }: { challenge: SolChall
                       return nextReset.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
                     })()}
                   </p>
+                </div>
+                
+                <div className="flex gap-2 w-full px-6">
+                  <button 
+                    onClick={() => {
+                      const text = `🔥 Just saved my SOL stake on @CodeArena! \n\nMy ${challenge.platform} streak is alive. Day ${dbStatus.totalSolved + 1} secured. 🚀\n\n#Solana #Web3 #BuildInPublic`;
+                      window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}`, '_blank');
+                    }}
+                    className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-[#1DA1F2]/10 text-[#1DA1F2] border border-[#1DA1F2]/20 hover:bg-[#1DA1F2]/20 transition-all text-sm font-bold"
+                  >
+                    <Twitter className="w-4 h-4" /> Share Progress on Twitter
+                  </button>
                 </div>
               </div>
             ) : dbStatus.status === 'Eliminated' ? (
