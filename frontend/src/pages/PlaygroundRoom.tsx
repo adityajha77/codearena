@@ -8,17 +8,12 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter }
 import { executeCode, validateTestCases } from "@/lib/piston";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { toast } from "sonner";
-import { createClient } from "@supabase/supabase-js";
+import { supabase } from "@/lib/supabase";
 import { Clock, Users, Play, Upload, User, Copy, Trash2, Home, RefreshCw, ArrowLeft } from "lucide-react";
 import { usePlaygroundTimer } from "@/hooks/usePlaygroundTimer";
 import { useUserStore } from "@/store/userStore";
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-
-// Ensure you have configured supabaseClient properly
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
-const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
-const supabase = createClient(supabaseUrl, supabaseKey);
 
 export default function PlaygroundRoom() {
   const { roomId } = useParams();

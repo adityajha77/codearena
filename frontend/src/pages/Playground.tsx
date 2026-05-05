@@ -7,16 +7,11 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { toast } from "sonner";
-import { createClient } from "@supabase/supabase-js";
+import { supabase } from "@/lib/supabase";
 import { addHours, isAfter, isBefore } from "date-fns";
 import { ArrowLeft, Home, Trophy, BookOpen, Code2, Check, Dice5 } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import challengesMetadata from "../data/challenges_metadata.json";
-
-// Ensure you have configured supabaseClient properly in your project
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
-const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
-const supabase = createClient(supabaseUrl, supabaseKey);
 
 export default function Playground() {
   const navigate = useNavigate();

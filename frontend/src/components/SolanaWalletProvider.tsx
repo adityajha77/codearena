@@ -2,7 +2,6 @@ import { useMemo } from 'react';
 import { ConnectionProvider, WalletProvider } from '@solana/wallet-adapter-react';
 import { WalletAdapterNetwork } from '@solana/wallet-adapter-base';
 import { 
-  PhantomWalletAdapter, 
   SolflareWalletAdapter,
 } from '@solana/wallet-adapter-wallets';
 import { 
@@ -55,7 +54,6 @@ export function SolanaWalletProvider({ children }: SolanaWalletProviderProps) {
       // On web, we include standard adapters
       return [
         mobileAdapter,
-        new PhantomWalletAdapter({ network }),
         new SolflareWalletAdapter({ network }),
       ];
     },
