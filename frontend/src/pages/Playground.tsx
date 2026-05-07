@@ -35,15 +35,28 @@ export default function Playground() {
       // Get all rooms where user is a participant and room is not finished
       const { data, error } = await supabase
         .from('playground_participants')
-        .select('room_id, playground_rooms(*)')
+        .select('room_id, submissions, playground_rooms(*)')
         .eq('wallet_address', publicKey.toBase58());
       
       if (data) {
-        const ongoing = data.find((p: any) => 
-          ['waiting', 'active'].includes(p.playground_rooms.status)
-        );
+        const ongoing = data.find((p: any) => {
+          const room = p.playground_rooms;
+          if (!['waiting', 'active'].includes(room.status) || p.submissions) return false;
+          
+          // If active, check if time has naturally expired
+          if (room.status === 'active' && room.start_time && room.duration_minutes) {
+            const startTime = new Date(room.start_time).getTime();
+            const endTime = startTime + (room.duration_minutes * 60 * 1000);
+            if (Date.now() > endTime) return false;
+          }
+          
+          return true;
+        });
+
         if (ongoing) {
           setActiveChallenge(ongoing.playground_rooms);
+        } else {
+          setActiveChallenge(null);
         }
       }
     };

@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useParams } from "react-router-dom";
+import { useParams, useNavigate } from "react-router-dom";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import { Button } from "@/components/ui/button";
 import Editor from "@monaco-editor/react";
@@ -15,8 +15,10 @@ import { useUserStore } from "@/store/userStore";
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
+
 export default function PlaygroundRoom() {
   const { roomId } = useParams();
+  const navigate = useNavigate();
   const { publicKey } = useWallet();
   const [activeQuestionIndex, setActiveQuestionIndex] = useState(0);
   const [codes, setCodes] = useState<Record<number, string>>({});
@@ -274,21 +276,32 @@ export default function PlaygroundRoom() {
     if (!roomId || !window.confirm("Are you sure you want to delete this challenge? This will remove all participants.")) return;
     
     try {
-      // Notify all participants before deleting
+      // 1. Notify all participants before deleting
       await supabase.channel(`playground_presence:${roomId}`).send({
         type: 'broadcast',
         event: 'room_deleted',
       });
 
+      // 2. Delete all participants first (FK constraint safety)
+      const { error: pErr } = await supabase
+        .from('playground_participants')
+        .delete()
+        .eq('room_id', roomId);
+      
+      if (pErr) throw pErr;
+
+      // 3. Delete the room itself
       const { error } = await supabase
         .from('playground_rooms')
         .delete()
         .eq('id', roomId);
       
       if (error) throw error;
-      toast.success("Challenge deleted.");
-      window.location.href = '/playground';
+
+      toast.success("Challenge deleted successfully.");
+      setTimeout(() => navigate('/playground'), 500);
     } catch (e: any) {
+      console.error("Delete failed:", e);
       toast.error(e.message || "Failed to delete challenge");
     }
   };
