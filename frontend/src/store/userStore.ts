@@ -12,6 +12,7 @@ export interface SolChallenge {
   lastSolvedDate?: string;
   lastSolvedAt?: string;
   userWallet?: string;
+  registrationDeadline?: string;
 }
 
 interface UserState {

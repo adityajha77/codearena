@@ -10,6 +10,12 @@ import { useAnchorWallet, useConnection, useWallet } from "@solana/wallet-adapte
 import { Transaction, SystemProgram, PublicKey, LAMPORTS_PER_SOL } from "@solana/web3.js";
 import { AnchorProvider, BN } from "@coral-xyz/anchor";
 import { getProgram, getChallengePoolPDA, getParticipantRecordPDA } from "@/lib/anchorClient";
+import { Calendar } from "@/components/ui/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { format } from "date-fns";
+import { CalendarIcon, Clock } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 interface Props {
   isOpen: boolean;
@@ -33,11 +39,37 @@ export default function CreateChallengeDialog({ isOpen, onClose, onSuccess }: Pr
     stake: "0.1",
     mode: "Community",
     platform: "GitHub",
-    tags: [] as string[]
+    tags: [] as string[],
+    registration_deadline: "" // New field
   });
   
   const [friendsList, setFriendsList] = useState("");
   const [beneficiariesList, setBeneficiariesList] = useState("");
+  
+  // Date & Time Picker State
+  const [selectedDate, setSelectedDate] = useState<Date | undefined>(undefined);
+  const [selectedHour, setSelectedHour] = useState("12");
+  const [selectedMinute, setSelectedMinute] = useState("00");
+  const [selectedAmPm, setSelectedAmPm] = useState("PM");
+
+  const updateDeadline = (date?: Date, hour?: string, minute?: string, ampm?: string) => {
+    const d = date || selectedDate;
+    const h = hour || selectedHour;
+    const m = minute || selectedMinute;
+    const ap = ampm || selectedAmPm;
+
+    if (!d) return;
+
+    const newDeadline = new Date(d);
+    let hourNum = parseInt(h);
+    if (ap === "PM" && hourNum < 12) hourNum += 12;
+    if (ap === "AM" && hourNum === 12) hourNum = 0;
+    
+    newDeadline.setHours(hourNum);
+    newDeadline.setMinutes(parseInt(m));
+    
+    setFormData(prev => ({ ...prev, registration_deadline: newDeadline.toISOString() }));
+  };
 
   const toggleTag = (tag: string) => {
     setFormData(prev => ({
@@ -198,7 +230,8 @@ export default function CreateChallengeDialog({ isOpen, onClose, onSuccess }: Pr
         status: "Live",
         allowed_friends: friends,
         beneficiaries: beneficiaries,
-        platform: formData.platform
+        platform: formData.platform,
+        registration_deadline: formData.registration_deadline || null
       }]).select().single();
 
       if (challengeError) throw challengeError;
@@ -234,7 +267,8 @@ export default function CreateChallengeDialog({ isOpen, onClose, onSuccess }: Pr
         stakeAmount: parseFloat(formData.stake),
         isActive: true,
         startDate: new Date(),
-        platform: formData.platform as any
+        platform: formData.platform as any,
+        registrationDeadline: formData.registration_deadline
       });
 
       // 4. Send Notifications based on mode
@@ -263,7 +297,7 @@ export default function CreateChallengeDialog({ isOpen, onClose, onSuccess }: Pr
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-[425px] max-h-[85vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Create New Challenge</DialogTitle>
           <DialogDescription>
@@ -332,6 +366,108 @@ export default function CreateChallengeDialog({ isOpen, onClose, onSuccess }: Pr
               </select>
             </div>
           </div>
+
+          {formData.mode !== 'Community' && (
+            <div className="flex items-center justify-between p-3 bg-primary/5 border border-primary/20 rounded-xl">
+              <div className="space-y-0.5">
+                <Label className="text-sm font-bold">Start Immediately</Label>
+                <p className="text-[10px] text-muted-foreground">Skip the registration window and start now</p>
+              </div>
+              <input 
+                type="checkbox" 
+                checked={!formData.registration_deadline} 
+                onChange={(e) => {
+                  if (e.target.checked) {
+                    setFormData(prev => ({ ...prev, registration_deadline: "" }));
+                    setSelectedDate(undefined);
+                  } else {
+                    // Set a default deadline (1h from now)
+                    const d = new Date();
+                    d.setHours(d.getHours() + 1);
+                    setFormData(prev => ({ ...prev, registration_deadline: d.toISOString() }));
+                  }
+                }}
+                className="w-5 h-5 accent-primary"
+              />
+            </div>
+          )}
+
+          {(formData.mode === 'Community' || formData.registration_deadline) && (
+            <div className="space-y-3 p-4 bg-secondary/5 border border-secondary/20 rounded-xl">
+              <Label className="text-sm font-bold flex items-center gap-2">
+                <Clock className="w-4 h-4 text-primary" /> {formData.mode === 'Community' ? 'Registration Deadline' : 'Scheduled Start'} (IST)
+              </Label>
+              <p className="text-[11px] text-muted-foreground leading-tight">
+                {formData.mode === 'Community' 
+                  ? "People cannot join after this time." 
+                  : "The challenge will remain 'Pending' until this time."}
+              </p>
+              
+              <div className="flex flex-col gap-3">
+                {/* Date Picker */}
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant={"outline"}
+                      className={cn(
+                        "w-full justify-start text-left font-normal bg-background/50 border-white/10",
+                        !selectedDate && "text-muted-foreground"
+                      )}
+                    >
+                      <CalendarIcon className="mr-2 h-4 w-4" />
+                      {selectedDate ? format(selectedDate, "PPP") : <span>Pick a date</span>}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="start">
+                    <Calendar
+                      mode="single"
+                      selected={selectedDate}
+                      onSelect={(date) => {
+                        setSelectedDate(date);
+                        updateDeadline(date);
+                      }}
+                      initialFocus
+                    />
+                  </PopoverContent>
+                </Popover>
+
+                {/* Time Pickers */}
+                <div className="flex gap-2">
+                  <Select value={selectedHour} onValueChange={(v) => { setSelectedHour(v); updateDeadline(undefined, v); }}>
+                    <SelectTrigger className="w-full bg-background/50 border-white/10">
+                      <SelectValue placeholder="Hour" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {Array.from({ length: 12 }, (_, i) => i + 1).map((h) => (
+                        <SelectItem key={h} value={h.toString().padStart(2, '0')}>{h.toString().padStart(2, '0')}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+
+                  <Select value={selectedMinute} onValueChange={(v) => { setSelectedMinute(v); updateDeadline(undefined, undefined, v); }}>
+                    <SelectTrigger className="w-full bg-background/50 border-white/10">
+                      <SelectValue placeholder="Min" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {["00", "15", "30", "45"].map((m) => (
+                        <SelectItem key={m} value={m}>{m}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+
+                  <Select value={selectedAmPm} onValueChange={(v) => { setSelectedAmPm(v); updateDeadline(undefined, undefined, undefined, v); }}>
+                    <SelectTrigger className="w-64 bg-background/50 border-white/10">
+                      <SelectValue placeholder="AM/PM" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="AM">AM</SelectItem>
+                      <SelectItem value="PM">PM</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            </div>
+          )}
 
           {formData.mode === 'Friend' && (
             <div className="space-y-2 p-3 bg-primary/5 border border-primary/20 rounded-md">

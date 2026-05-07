@@ -63,15 +63,23 @@ export default function ActiveChallengeCard({ challenge }: { challenge: SolChall
   }, [challenge.id]);
 
   const isChallengeCompleted = dbStatus.totalSolved >= challenge.days;
+  const isPendingStart = challenge.registrationDeadline && new Date() < new Date(challenge.registrationDeadline);
 
   useEffect(() => {
-    if (isChallengeCompleted || isSolvedToday) return;
+    if (isChallengeCompleted || isSolvedToday || isPendingStart) return;
     
     const timer = setInterval(() => {
       const now = new Date();
-      // Fair Timer: Countdown from (last solve OR start date) + 24 hours
-      const lastAction = challenge.lastSolvedAt ? new Date(challenge.lastSolvedAt) : new Date(challenge.startDate);
-      const deadline = new Date(lastAction.getTime() + (24 * 60 * 60 * 1000));
+      // Fair Timer: Countdown from fixed 24-hour windows
+      // If registrationDeadline exists, the windows start from THAT time for everyone.
+      // Otherwise, use joinedAt (startDate).
+      const baseStartTime = challenge.registrationDeadline ? new Date(challenge.registrationDeadline) : new Date(challenge.startDate);
+      const timeSinceBase = now.getTime() - baseStartTime.getTime();
+      
+      const anniversaryCount = timeSinceBase >= 0 ? Math.floor(timeSinceBase / (24 * 60 * 60 * 1000)) : 0;
+      
+      // The deadline is the end of the CURRENT 24-hour window
+      const deadline = new Date(baseStartTime.getTime() + (anniversaryCount + 1) * 24 * 60 * 60 * 1000);
 
       const diff = deadline.getTime() - now.getTime();
 
@@ -87,7 +95,7 @@ export default function ActiveChallengeCard({ challenge }: { challenge: SolChall
       setTimeLeft(`${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`);
     }, 1000);
     return () => clearInterval(timer);
-  }, [challenge.lastSolvedAt, challenge.startDate, isChallengeCompleted, isSolvedToday]);
+  }, [challenge.startDate, isChallengeCompleted, isSolvedToday]);
 
   const getHandleForPlatform = () => {
     switch (challenge.platform) {
@@ -239,10 +247,11 @@ export default function ActiveChallengeCard({ challenge }: { challenge: SolChall
                   <p className="text-[10px] uppercase tracking-widest text-muted-foreground mb-1">Next Cycle Starts At</p>
                   <p className="text-sm font-mono font-bold text-foreground">
                     {(() => {
-                      const joinedAt = new Date(challenge.startDate);
+                      const baseStartTime = challenge.registrationDeadline ? new Date(challenge.registrationDeadline) : new Date(challenge.startDate);
                       const now = new Date();
-                      const anniversaryCount = Math.floor((now.getTime() - joinedAt.getTime()) / (24 * 60 * 60 * 1000));
-                      const nextReset = new Date(joinedAt.getTime() + (anniversaryCount + 1) * 24 * 60 * 60 * 1000);
+                      const timeSinceBase = now.getTime() - baseStartTime.getTime();
+                      const anniversaryCount = timeSinceBase >= 0 ? Math.floor(timeSinceBase / (24 * 60 * 60 * 1000)) : 0;
+                      const nextReset = new Date(baseStartTime.getTime() + (anniversaryCount + 1) * 24 * 60 * 60 * 1000);
                       return nextReset.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
                     })()}
                   </p>
@@ -258,6 +267,20 @@ export default function ActiveChallengeCard({ challenge }: { challenge: SolChall
                   >
                     <Twitter className="w-4 h-4" /> Share Progress on Twitter
                   </button>
+                </div>
+              </div>
+            ) : isPendingStart ? (
+              <div className="py-8 w-full bg-blue-500/10 rounded-2xl border border-blue-500/20 px-6 flex flex-col items-center">
+                <div className="text-3xl mb-3 animate-bounce">⏳</div>
+                <p className="text-lg font-black text-blue-400 mb-2 uppercase tracking-tight">Challenge Starts Soon!</p>
+                <p className="text-xs text-blue-300/70 text-center leading-relaxed mb-4">
+                  Registration is open. The first 24h solving window begins once registration closes.
+                </p>
+                <div className="px-4 py-2 bg-black/40 rounded-lg border border-blue-500/30">
+                  <p className="text-[10px] uppercase tracking-widest text-blue-400/60 mb-1 font-bold">Starts At (IST)</p>
+                  <p className="text-sm font-mono font-bold text-blue-400">
+                    {new Date(challenge.registrationDeadline!).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', day: '2-digit', month: 'short' })}
+                  </p>
                 </div>
               </div>
             ) : dbStatus.status === 'Eliminated' ? (

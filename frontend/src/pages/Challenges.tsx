@@ -89,7 +89,7 @@ const Challenges = () => {
             is_claimed,
             status,
             challenges!fk_challenge (
-              id, title, duration, stake, platform, created_at
+              id, title, duration, stake, platform, created_at, registration_deadline
             )
           `)
           .ilike('wallet_address', walletAddress);
@@ -113,7 +113,8 @@ const Challenges = () => {
               platform: c.platform,
               lastSolvedDate: p.last_solved_date || undefined,
               lastSolvedAt: p.last_solved_at || undefined,
-              userWallet: walletAddress
+              userWallet: walletAddress,
+              registrationDeadline: (p.challenges as any).registration_deadline
             };
           });
           setActiveChallenges(myChallenges);
@@ -165,6 +166,15 @@ const Challenges = () => {
         return;
     }
     
+    // Check registration deadline for Community mode
+    if (c.mode === 'Community' && c.registration_deadline) {
+      const deadline = new Date(c.registration_deadline);
+      if (new Date() > deadline) {
+        toast.error("Registration for this challenge has closed!");
+        return;
+      }
+    }
+
     // For Private Self challenges, there is no joining, they are inherently joined upon creation
     if (c.mode === 'Self') return;
 
@@ -312,7 +322,10 @@ const Challenges = () => {
                     <div className="relative glass-card rounded-2xl p-6 space-y-4 border border-white/10 shadow-2xl h-full flex flex-col">
                       <div className="flex justify-between items-center">
                         <span className="text-[10px] font-bold tracking-widest uppercase text-primary bg-primary/10 px-2 py-0.5 rounded">Trending</span>
-                        <span className="text-xs font-mono text-muted-foreground">{c.challenge_participants?.[0]?.count || 0} participants</span>
+                        <div className="flex flex-col items-end">
+                          <span className="text-xs font-mono text-muted-foreground">{c.challenge_participants?.[0]?.count || 0} participants</span>
+                          <span className="text-[10px] font-bold text-accent">Total Pool: {(c.challenge_participants?.[0]?.count || 0) * c.stake} SOL</span>
+                        </div>
                       </div>
                       
                       <div className="flex items-start justify-between">
@@ -322,6 +335,11 @@ const Challenges = () => {
                              <span className="px-2 py-0.5 rounded bg-secondary/20 text-[10px] font-bold text-secondary uppercase">{c.platform}</span>
                              <span className="px-2 py-0.5 rounded bg-white/5 text-[10px] font-bold text-muted-foreground uppercase">{c.duration}</span>
                           </div>
+                          {c.registration_deadline && (
+                            <div className="mt-2 text-[10px] font-mono text-orange-400 bg-orange-400/10 px-2 py-1 rounded border border-orange-400/20 w-fit">
+                              ⏰ Deadline: {new Date(c.registration_deadline).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}
+                            </div>
+                          )}
                         </div>
                       </div>
 
@@ -330,9 +348,14 @@ const Challenges = () => {
                       <div className="pt-4 mt-auto">
                         <button 
                           onClick={() => handleJoinClick(c)}
-                          className="w-full py-3 rounded-xl bg-primary text-primary-foreground font-bold shadow-lg shadow-primary/20 hover:scale-[1.02] active:scale-[0.98] transition-all"
+                          disabled={c.registration_deadline && new Date() > new Date(c.registration_deadline)}
+                          className={`w-full py-3 rounded-xl font-bold shadow-lg transition-all ${
+                            c.registration_deadline && new Date() > new Date(c.registration_deadline)
+                            ? "bg-muted text-muted-foreground cursor-not-allowed"
+                            : "bg-primary text-primary-foreground shadow-primary/20 hover:scale-[1.02] active:scale-[0.98]"
+                          }`}
                         >
-                          Join Community
+                          {c.registration_deadline && new Date() > new Date(c.registration_deadline) ? "Registration Closed" : "Join Community"}
                         </button>
                       </div>
                     </div>
@@ -418,14 +441,14 @@ const Challenges = () => {
                   <motion.div 
                     whileHover={c.myStatus === "Eliminated" ? {} : { y: -4 }} 
                     onClick={() => setSelectedChallenge(c)}
-                    className={`rounded-2xl p-6 space-y-4 h-full flex flex-col border transition-all relative overflow-hidden ${
+                    className={`rounded-3xl p-8 space-y-6 h-full flex flex-col border transition-all relative overflow-hidden ${
                       c.myStatus === "Eliminated" 
                         ? "bg-red-500/5 border-red-500/40 shadow-lg shadow-red-500/5" 
-                        : "glass-card border-white/5 shadow-xl hover:shadow-primary/5"
+                        : "glass-card border-white/10 shadow-xl hover:shadow-primary/10 hover:border-white/20"
                     }`}
                   >
                     {c.myStatus === "Eliminated" && (
-                      <div className="absolute top-0 left-0 w-full bg-red-500 text-white text-[10px] font-bold text-center py-1 uppercase tracking-widest z-10 animate-pulse">
+                      <div className="absolute top-0 left-0 w-full bg-red-500 text-white text-[11px] font-black text-center py-1.5 uppercase tracking-[0.2em] z-10 animate-pulse">
                         Challenge Lost
                       </div>
                     )}
@@ -456,7 +479,7 @@ const Challenges = () => {
                         className="p-2 rounded-lg bg-white/5 hover:bg-white/10 text-muted-foreground transition-all"
                         title="Copy Challenge ID to share"
                       >
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1-0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
                       </button>
                     </div>
                     
@@ -476,9 +499,15 @@ const Challenges = () => {
                           <span className="font-semibold text-accent">{c.stake} ◎</span>
                         </div>
                         <div className="flex flex-col items-center justify-center p-2 rounded-lg bg-black/20">
-                          <span className="text-xs text-muted-foreground mb-1">Users</span>
-                          <span className="font-semibold text-foreground">{c.challenge_participants?.[0]?.count || 0}</span>
+                          <span className="text-xs text-muted-foreground mb-1">Total Pool</span>
+                          <span className="font-semibold text-foreground">{(c.challenge_participants?.[0]?.count || 0) * c.stake} ◎</span>
                         </div>
+                      </div>
+                    )}
+
+                    {c.registration_deadline && c.myStatus === 'Not Joined' && (
+                      <div className="text-[10px] font-mono text-orange-400 bg-orange-400/10 px-2 py-1 rounded border border-orange-400/20 w-fit">
+                        ⏰ Registration Closes: {new Date(c.registration_deadline).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}
                       </div>
                     )}
                     
@@ -486,10 +515,14 @@ const Challenges = () => {
                       <div className="flex gap-2 pt-2">
                         <button 
                            onClick={(e) => { e.stopPropagation(); handleJoinClick(c); }} 
-                           disabled={isProcessingTx}
-                           className="flex-1 py-3 rounded-xl bg-primary text-primary-foreground font-bold shadow-lg shadow-primary/20 hover:opacity-90 hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
+                           disabled={isProcessingTx || (c.registration_deadline && new Date() > new Date(c.registration_deadline))}
+                           className={`flex-1 py-3 rounded-xl font-bold shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed ${
+                             c.registration_deadline && new Date() > new Date(c.registration_deadline)
+                             ? "bg-muted text-muted-foreground"
+                             : "bg-primary text-primary-foreground shadow-primary/20 hover:opacity-90 hover:scale-[1.02] active:scale-[0.98]"
+                           }`}
                         >
-                          {isProcessingTx ? "Checking..." : "Stake to Join"}
+                          {isProcessingTx ? "Checking..." : (c.registration_deadline && new Date() > new Date(c.registration_deadline) ? "Registration Closed" : "Stake to Join")}
                         </button>
                       </div>
                     )}
