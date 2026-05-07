@@ -123,6 +123,16 @@ export default function CreateChallengeDialog({ isOpen, onClose, onSuccess }: Pr
       return;
     }
 
+    if (formData.mode === 'Community' && !formData.registration_deadline) {
+      toast.error("Please pick a registration deadline for Community contests!");
+      return;
+    }
+    
+    if (formData.registration_deadline && new Date(formData.registration_deadline) < new Date()) {
+        toast.error("Deadline must be in the future!");
+        return;
+    }
+
     setIsSubmitting(true);
     
     try {

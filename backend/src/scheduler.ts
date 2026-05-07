@@ -83,9 +83,10 @@ export const runReminderCheck = async (force = false) => {
 
         console.log(`🚀 [SLASH] Anniversary check failed for ${p.wallet_address}. Owed: ${strikesOwed}, Current Strikes: ${p.strike_count}`);
         
+        let slashTxHash = null;
         try {
           // Apply first penalty
-          await applyPenaltyOnChain((p.challenges as any).id, p.wallet_address, beneficiary);
+          slashTxHash = await applyPenaltyOnChain((p.challenges as any).id, p.wallet_address, beneficiary);
           
           // If they missed multiple days (e.g. 2 days late), apply second penalty immediately
           if (strikesOwed >= 2 && p.strike_count === 0) {
@@ -97,7 +98,7 @@ export const runReminderCheck = async (force = false) => {
             }
           }
 
-          console.log(`   ✅ Successfully slashed ${p.wallet_address} on-chain!`);
+          
         } catch (onChainErr: any) {
           const errMsg = onChainErr.message || "";
           if (errMsg.includes('overflow') || errMsg.includes('0x1') || errMsg.includes('already been slashed')) {
@@ -116,7 +117,8 @@ export const runReminderCheck = async (force = false) => {
           .update({ 
             strike_count: newStrikes, 
             status: finalStatus, 
-            last_slashed_date: todayStr 
+            last_slashed_date: todayStr,
+            last_slash_tx: slashTxHash 
           })
           .eq('id', p.id);
         

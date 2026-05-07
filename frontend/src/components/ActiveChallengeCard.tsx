@@ -95,7 +95,7 @@ export default function ActiveChallengeCard({ challenge }: { challenge: SolChall
       setTimeLeft(`${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`);
     }, 1000);
     return () => clearInterval(timer);
-  }, [challenge.startDate, isChallengeCompleted, isSolvedToday]);
+  }, [challenge.startDate, challenge.registrationDeadline, isChallengeCompleted, isSolvedToday, isPendingStart]);
 
   const getHandleForPlatform = () => {
     switch (challenge.platform) {
