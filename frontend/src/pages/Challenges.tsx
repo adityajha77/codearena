@@ -29,6 +29,7 @@ const Challenges = () => {
   const [selectedChallenge, setSelectedChallenge] = useState<any>(null);
 
   
+  const [showLost, setShowLost] = useState(false);
   const { addChallenge, setActiveChallenges, walletAddress, activeChallenges, githubHandle, leetcodeHandle, codeforcesHandle } = useUserStore();
   const { connection } = useConnection();
   const { publicKey, sendTransaction } = useWallet();
@@ -72,6 +73,10 @@ const Challenges = () => {
       setIsLoading(false);
     }
   };
+
+  useEffect(() => {
+    setShowLost(false);
+  }, [activeTab]);
 
   useEffect(() => {
     fetchChallenges();
@@ -145,6 +150,9 @@ const Challenges = () => {
     }
     return false;
   });
+
+  const activeFiltered = filtered.filter(c => c.myStatus !== 'Eliminated');
+  const lostFiltered = filtered.filter(c => c.myStatus === 'Eliminated');
 
   const handleJoinClick = async (c: any) => {
     if (!walletAddress || !publicKey) {
@@ -416,17 +424,15 @@ const Challenges = () => {
                 </button>
               ))}
             </div>
-          </ScrollReveal>
-
-          {isLoading ? (
+          </ScrollReveal>          {isLoading ? (
             <div className="flex justify-center p-12">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
             </div>
-          ) : filtered.length === 0 ? (
+          ) : activeFiltered.length === 0 ? (
             <div className="text-center p-16 text-muted-foreground border border-dashed border-white/10 rounded-3xl bg-black/10">
               <div className="text-4xl mb-4 opacity-50">🎮</div>
-              <h3 className="text-xl font-semibold text-foreground mb-2">No Challenges Found</h3>
-              <p className="mb-6">There are no {activeTab.toLowerCase()} challenges here yet.</p>
+              <h3 className="text-xl font-semibold text-foreground mb-2">No Active Challenges Found</h3>
+              <p className="mb-6">There are no active {activeTab.toLowerCase()} challenges here yet.</p>
               <button 
                 onClick={() => setIsDialogOpen(true)}
                 className="px-6 py-2 rounded-xl bg-secondary text-secondary-foreground font-semibold hover:opacity-90 transition-all text-sm"
@@ -436,37 +442,26 @@ const Challenges = () => {
             </div>
           ) : (
             <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-5">
-              {filtered.map((c, i) => (
+              {activeFiltered.map((c, i) => (
                 <ScrollReveal key={c.id} delay={i * 0.08}>
                   <motion.div 
-                    whileHover={c.myStatus === "Eliminated" ? {} : { y: -4 }} 
+                    whileHover={{ y: -4 }} 
                     onClick={() => setSelectedChallenge(c)}
-                    className={`rounded-3xl p-8 space-y-6 h-full flex flex-col border transition-all relative overflow-hidden ${
-                      c.myStatus === "Eliminated" 
-                        ? "bg-red-500/5 border-red-500/40 shadow-lg shadow-red-500/5" 
-                        : "glass-card border-white/10 shadow-xl hover:shadow-primary/10 hover:border-white/20"
-                    }`}
+                    className="rounded-3xl p-8 space-y-6 h-full flex flex-col border transition-all relative overflow-hidden glass-card border-white/10 shadow-xl hover:shadow-primary/10 hover:border-white/20"
                   >
-                    {c.myStatus === "Eliminated" && (
-                      <div className="absolute top-0 left-0 w-full bg-red-500 text-white text-[11px] font-black text-center py-1.5 uppercase tracking-[0.2em] z-10 animate-pulse">
-                        Challenge Lost
-                      </div>
-                    )}
-
                     <div className="flex items-center justify-between">
                       <span className={`px-3 py-1 rounded-full text-xs font-bold ${
-                        c.myStatus === "Eliminated" ? "bg-red-500 text-white" :
                         c.status === "Live" ? "bg-primary/20 text-primary" : c.status === "Active" ? "bg-accent/20 text-accent" : "bg-secondary/20 text-secondary"
-                      }`}>{c.myStatus === "Eliminated" ? "ELIMINATED" : c.status}</span>
+                      }`}>{c.status}</span>
                       <span className="text-xs font-mono font-medium text-muted-foreground bg-muted/50 px-2 py-1 rounded-md">{c.mode}</span>
                     </div>
                     
                     <div className="flex items-start justify-between">
                       <div>
-                        <h3 className={`text-xl font-bold font-display mb-2 ${c.myStatus === "Eliminated" ? "text-red-400" : "text-foreground"}`}>{c.title}</h3>
+                        <h3 className="text-xl font-bold font-display mb-2 text-foreground">{c.title}</h3>
                         <div className="flex gap-2 flex-wrap">
                           {c.tags?.map((t: string) => (
-                            <span key={t} className={`px-2.5 py-0.5 rounded-md text-[11px] font-semibold ${c.myStatus === "Eliminated" ? "bg-red-500/10 text-red-400" : "bg-secondary/10 text-secondary"}`}>{t}</span>
+                            <span key={t} className="px-2.5 py-0.5 rounded-md text-[11px] font-semibold bg-secondary/10 text-secondary">{t}</span>
                           ))}
                         </div>
                       </div>
@@ -483,27 +478,20 @@ const Challenges = () => {
                       </button>
                     </div>
                     
-                    {c.myStatus === "Eliminated" ? (
-                      <div className="flex flex-col items-center justify-center py-6 mt-4 border-t border-red-500/20 bg-red-500/10 rounded-xl space-y-2">
-                         <div className="text-red-500 font-black text-2xl tracking-tighter italic">YOU LOST</div>
-                         <div className="text-red-400/80 text-[11px] text-center px-4 leading-tight">See you again, you looses the challenge and SOL too.</div>
+                    <div className="grid grid-cols-3 gap-2 py-4 mt-auto border-t border-white/5 font-mono text-sm">
+                      <div className="flex flex-col items-center justify-center p-2 rounded-lg bg-black/20">
+                        <span className="text-xs text-muted-foreground mb-1">Duration</span>
+                        <span className="font-semibold text-foreground">{c.duration}</span>
                       </div>
-                    ) : (
-                      <div className="grid grid-cols-3 gap-2 py-4 mt-auto border-t border-white/5 font-mono text-sm">
-                        <div className="flex flex-col items-center justify-center p-2 rounded-lg bg-black/20">
-                          <span className="text-xs text-muted-foreground mb-1">Duration</span>
-                          <span className="font-semibold text-foreground">{c.duration}</span>
-                        </div>
-                        <div className="flex flex-col items-center justify-center p-2 rounded-lg bg-black/20">
-                          <span className="text-xs text-muted-foreground mb-1">Stake</span>
-                          <span className="font-semibold text-accent">{c.stake} ◎</span>
-                        </div>
-                        <div className="flex flex-col items-center justify-center p-2 rounded-lg bg-black/20">
-                          <span className="text-xs text-muted-foreground mb-1">Total Pool</span>
-                          <span className="font-semibold text-foreground">{(c.challenge_participants?.[0]?.count || 0) * c.stake} ◎</span>
-                        </div>
+                      <div className="flex flex-col items-center justify-center p-2 rounded-lg bg-black/20">
+                        <span className="text-xs text-muted-foreground mb-1">Stake</span>
+                        <span className="font-semibold text-accent">{c.stake} ◎</span>
                       </div>
-                    )}
+                      <div className="flex flex-col items-center justify-center p-2 rounded-lg bg-black/20">
+                        <span className="text-xs text-muted-foreground mb-1">Total Pool</span>
+                        <span className="font-semibold text-foreground">{(c.challenge_participants?.[0]?.count || 0) * c.stake} ◎</span>
+                      </div>
+                    </div>
 
                     {c.registration_deadline && c.myStatus === 'Not Joined' && (
                       <div className="text-[10px] font-mono text-orange-400 bg-orange-400/10 px-2 py-1 rounded border border-orange-400/20 w-fit">
@@ -511,7 +499,7 @@ const Challenges = () => {
                       </div>
                     )}
                     
-                    {!['Self', 'Joined'].includes(c.myStatus) && c.myStatus !== 'Eliminated' && (
+                    {!['Self', 'Joined'].includes(c.myStatus) && (
                       <div className="flex gap-2 pt-2">
                         <button 
                            onClick={(e) => { e.stopPropagation(); handleJoinClick(c); }} 
@@ -537,6 +525,68 @@ const Challenges = () => {
                   </motion.div>
                 </ScrollReveal>
               ))}
+            </div>
+          )}
+
+          {/* Lost Challenges Section */}
+          {lostFiltered.length > 0 && (
+            <div className="mt-16">
+               <div className="flex items-center justify-between mb-6 border-t border-white/5 pt-8">
+                  <h3 className="text-xl font-bold font-display text-red-500/80 flex items-center gap-2">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-red-500"><path d="m21 21-4.3-4.3"/><circle cx="11" cy="11" r="8"/><path d="m11 8-3 3 3 3"/><path d="m11 11 3 3"/></svg>
+                    Lost {activeTab} Challenges
+                  </h3>
+                  <button 
+                    onClick={() => setShowLost(!showLost)}
+                    className="text-sm font-semibold text-muted-foreground hover:text-red-400 transition-colors flex items-center gap-2 bg-red-500/5 px-4 py-2 rounded-xl border border-red-500/10"
+                  >
+                    {showLost ? "Hide Lost" : `Show Lost (${lostFiltered.length})`}
+                    <svg 
+                      className={`transition-transform duration-300 ${showLost ? 'rotate-180' : ''}`}
+                      width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+                    >
+                      <path d="m6 9 6 6 6-6"/>
+                    </svg>
+                  </button>
+               </div>
+
+               {showLost && (
+                 <motion.div 
+                   initial={{ opacity: 0, y: 20 }}
+                   animate={{ opacity: 1, y: 0 }}
+                   className="grid md:grid-cols-2 lg:grid-cols-3 gap-5"
+                 >
+                    {lostFiltered.map((c, i) => (
+                      <div 
+                        key={c.id}
+                        className="rounded-3xl p-8 space-y-6 h-full flex flex-col border border-red-500/40 bg-red-500/5 shadow-lg shadow-red-500/5 relative overflow-hidden"
+                      >
+                         <div className="absolute top-0 left-0 w-full bg-red-500 text-white text-[11px] font-black text-center py-1.5 uppercase tracking-[0.2em] z-10">
+                            Challenge Lost
+                         </div>
+
+                         <div className="flex items-center justify-between">
+                            <span className="px-3 py-1 rounded-full text-xs font-bold bg-red-500 text-white">ELIMINATED</span>
+                            <span className="text-xs font-mono font-medium text-muted-foreground bg-muted/50 px-2 py-1 rounded-md">{c.mode}</span>
+                         </div>
+
+                         <div>
+                            <h3 className="text-xl font-bold font-display mb-2 text-red-400">{c.title}</h3>
+                            <div className="flex gap-2 flex-wrap">
+                               {c.tags?.map((t: string) => (
+                                 <span key={t} className="px-2.5 py-0.5 rounded-md text-[11px] font-semibold bg-red-500/10 text-red-400">{t}</span>
+                               ))}
+                            </div>
+                         </div>
+
+                         <div className="flex flex-col items-center justify-center py-6 mt-4 border-t border-red-500/20 bg-red-500/10 rounded-xl space-y-2">
+                            <div className="text-red-500 font-black text-2xl tracking-tighter italic">YOU LOST</div>
+                            <div className="text-red-400/80 text-[11px] text-center px-4 leading-tight">See you again, you looses the challenge and SOL too.</div>
+                         </div>
+                      </div>
+                    ))}
+                 </motion.div>
+               )}
             </div>
           )}
 
